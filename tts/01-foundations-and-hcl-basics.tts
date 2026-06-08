@@ -1,5 +1,151 @@
-Foundations and HCL basics.
+Welcome to the Terraform track. This is notebook one of eight. Before we get to specific resources, dependencies, or state management, we lay the groundwork — what infrastructure as code is and why it changes how teams operate, where Terraform sits among the alternatives, the syntax of the HashiCorp Configuration Language, how providers work, the init-plan-apply-destroy lifecycle, and a first end-to-end example creating a real cloud resource. By the end of this session you will have run the full Terraform workflow at least once and you will know what each command actually does.
 
-What is covered.
+What infrastructure as code is.
 
-This notebook lays the groundwork — what infrastructure as code is, where Terraform sits in the landscape compared to CloudFormation, Pulumi, and Crossplane, the syntax of the HashiCorp Configuration Language, how providers work, and the init-plan-apply lifecycle that every Terraform workflow follows. We close with a worked end-to-end example.
+Before infrastructure as code, provisioning a server usually meant clicking through a cloud console. Pick an instance type. Attach a security group. Point at the right subnet. Hit "Launch". Done a few times, this is fine. Done across teams, environments, and years, it produces what configuration-management vendors politely call drift, and engineers privately call chaos. No two staging boxes are quite the same. No one remembers exactly how the production load balancer was configured three years ago. And "let me know if you change anything" is the only documentation.
+
+Infrastructure as code says — every piece of infrastructure, from networks to virtual machines to databases to dee-en-ess records to eye-ay-em policies, is described in text files, versioned in git, code-reviewed, and applied by a tool. The cloud console becomes a viewer of the result, not the source of truth.
+
+Three properties fall out. Reproducibility — spin up an identical environment from a fresh empty a-w-s account by checking out the repo and running one command. Reviewability — changes go through pull request. A reviewer sees the same diff that will be applied. Recoverability — if half the infrastructure burns down, the code describes what should be there, and the tool rebuilds it.
+
+A fourth property matters at scale — drift detection. The tool can periodically compare the real cloud state against the code and alert when someone reaches into the console and changes something by hand. Without infrastructure as code, drift is invisible until something breaks at three in the morning.
+
+There are two flavours of infrastructure as code. Imperative — you describe how to get there. Bash scripts that call a-w-s commands directly. Pulumi programs in Python that call provider software development kits. The author writes the algorithm. Declarative — you describe what should exist. The tool computes the diff between current and desired state, and figures out how to close the gap. Terraform, CloudFormation, Kubernetes manifests. The author writes the goal. The tool writes the algorithm.
+
+Terraform is declarative.
+
+The Terraform landscape.
+
+Terraform is not the only infrastructure-as-code tool. Knowing the alternatives makes it easier to see what Terraform optimizes for.
+
+Terraform itself — declarative, h-c-l, multi-cloud. Mature provider ecosystem, the plan-apply workflow, the biggest community. The trade-off is state management complexity, and the Business Source License since version one point six.
+
+OpenTofu — a true open-source Terraform fork under the m-p-l two license, created by the Linux Foundation after HashiCorp's license change. The h-c-l syntax, the provider protocol, and the concepts are identical. The ecosystem is still catching up, but everything in this series applies to both.
+
+a-w-s CloudFormation — declarative, yam-el or jay-son, a-w-s only. Native a-w-s integration, no separate state file because Amazon manages it. The trade-off is single-cloud and slower feature parity than Terraform.
+
+Pulumi — declarative core wrapped in a real programming language. TypeScript, Python, Go, c-sharp. Strengths are real programming-language ergonomics, integrated development environment support, and native tests. The trade-off is more state surface area and language-specific quirks.
+
+Crossplane — declarative and Kubernetes-native. Configuration is yam-el custom resource definitions. Continuous reconciliation, fits cloud-native shops. The trade-off is that you have to run Kubernetes as the control plane.
+
+a-w-s see-dee-kay — an imperative software development kit that generates CloudFormation underneath. Programming-language ergonomics with CloudFormation output. The trade-off is that it inherits CloudFormation's constraints.
+
+Where Terraform won. The plan-then-apply workflow. Every change shows a precise preview of what will happen before anything happens. Reviewers see exactly the resources that will be created, modified, or destroyed. This is the killer feature that made Terraform the default in the years two thousand seventeen through twenty twenty-three, and is still its strongest single argument.
+
+Where it falls short. State management is the perennial source of trouble. The state file is a load-bearing document that has to be stored carefully, locked during writes, and occasionally surgically edited by hand. Notebook three is entirely about this.
+
+h-c-l — the three building blocks.
+
+The HashiCorp Configuration Language is a small declarative domain-specific language. Once you know three shapes, you can read any Terraform file.
+
+A block is a piece of configuration delimited by braces. The syntax is — type, then one or two string labels, then an open brace, then arguments, then a close brace. Some block types take labels, like "resource a-w-s ess-three bucket logs". Others do not, like the bare terraform block.
+
+An argument lives inside a block. The syntax is — name, equals, expression. Each argument has a name on the left and an expression on the right.
+
+An expression is what produces a value. Five forms you will see. Literals — quoted strings, integers, booleans, lists, maps. References — for example a-w-s vee-pee-see main dot id, which reads the id attribute of the main vee-pee-see resource. Conditionals — using the question-mark colon form, like "if var dot env equals production then large else small". Function calls — like length of var dot subnets. And the for expression — like square-bracket for s in var dot subnets colon s dot cider-block end-bracket — which we cover in notebook four.
+
+A complete file is just a sequence of blocks at the top level. There are eight top-level block types you will meet. The terraform block holds settings for Terraform itself — required version, required providers, and the backend. The provider block configures a specific provider — region, credentials. The resource block declares a piece of infrastructure that Terraform should manage. The data block reads a piece of infrastructure or data that Terraform does not manage. The variable block declares an input variable. The output block declares an output value. The locals block declares local named values. And the module block instantiates a child module.
+
+This notebook focuses on terraform, provider, and resource. The rest arrive in later notebooks.
+
+A first example — write a file to disk.
+
+The smallest possible Terraform program. No cloud. No authentication. Just write a file to disk using the local provider.
+
+The configuration has three pieces. The terraform block says — we need Terraform one point six or newer, and we need the local provider in the two point four range. The tilde-greater-than version operator means "this minor version, any patch". So tilde-greater-than two point four allows two point four zero or two point four seven, but not two point five zero. The required-providers map names a provider, declares where to download it from on the public registry, and pins a version range.
+
+The resource block declares one piece of infrastructure — a file at "hello dot text" containing a greeting string. The two strings after "resource" are the type — local file — and the name — greeting. Together they form the resource's address — local file dot greeting. Resource addresses are how every other block references this resource, and we use them constantly.
+
+The interpolation syntax — dollar-sign-brace-content-close-brace — references "path dot module", a built-in that resolves to the directory of the module being processed. Interpolation is how expressions get embedded inside strings.
+
+Save the file in an empty directory and run the lifecycle. terraform init downloads the local provider and pins it in the lock file. terraform plan reports — one resource to add, zero to change, zero to destroy. The plus sign next to local file dot greeting means it will be created. terraform apply prompts for confirmation, then creates the file. cat hello dot text confirms the greeting is there.
+
+That is the entire Terraform workflow in one paragraph. Write h-c-l, init, plan, apply. The next sections unpack what each command actually does.
+
+Providers — the bridge to the world.
+
+A provider is a plugin that translates between Terraform's resource graph and an actual ay-pee-eye. a-w-s. gee-see-pee. GitHub. Kubernetes. Postgres. Vault. Datadog. Whatever. The provider exposes resource types — like a-w-s ess-three bucket, github repository, postgres database — exposes data sources for read-only lookups, and handles authentication.
+
+The terraform required-providers map names providers and pins versions. Each entry has a source — the registry path — and a version constraint. The provider block configures one provider with region, credentials, account — whatever the provider needs.
+
+You can have multiple provider blocks for the same provider type with different configurations. Multi-region setups. Multiple a-w-s accounts. You give each non-default block an alias. Then in resources, you reference the aliased provider by writing "provider equals a-w-s dot eu" in the resource block. This is one of the most common patterns once you go multi-region.
+
+Provider authentication — the one rule.
+
+Never put credentials in h-c-l.
+
+A literal access-key equals quote-A-K-I-A-... in a dot-tee-eff file is the single most common way credentials end up committed to git, in incident reports, and on the front page of news sites. Do not.
+
+Every provider supports reading credentials from somewhere safer. For a-w-s, the standard credential chain is — first, environment variables — a-w-s access-key-i-d, a-w-s secret access-key, a-w-s session token. Second, the shared credentials file — tilde slash dot a-w-s slash credentials, profile-selected via the a-w-s profile environment variable. Third, ee-see-two instance metadata — eye-ay-em instance profiles when running on ee-see-two. Fourth, ee-kay-ess service account — eye-ay-em roles for service accounts when running in a pod. And fifth, assumed roles — declared in the provider block, receiving a session from one of the above.
+
+For other providers, the pattern is similar. Environment variables and config files first. Secrets-manager integration second. Literal credentials never.
+
+A useful rule of thumb — if "git grep" can find your a-w-s access key, you have a problem. Run that check before every git push.
+
+The init-plan-apply-destroy lifecycle.
+
+These four commands are the Terraform workflow. Knowing what each one actually does — what it reads, what it writes, what it locks — saves debugging time.
+
+terraform init is the bootstrap. Run once per directory, and again whenever providers, modules, or backend config change. It downloads each provider in required-providers from its source and verifies its checksum. It installs declared modules by copying them into the dot-terraform slash modules directory. It configures the backend — where the state file lives. Local file by default, but configurable to ess-three, Terraform Cloud, Azure Storage, and others — which we cover in notebook three. It writes the provider lock file, dot-terraform-dot-lock-dot-h-c-l, with provider versions and checksums. Commit this file to git — it pins providers across the team. And it writes the dot-terraform directory with downloaded provider binaries and module copies. Add this directory to gitignore.
+
+Failure modes for init. Network failure fetching providers — init makes h-t-t-p-s calls to the registry. Behind corporate proxies, you may need the tee-eff plugin cache directory environment variable or a mirror. Checksum mismatch against the lock file — someone updated a provider locally without running init dash upgrade. Run terraform init dash upgrade to refresh the lock. Backend authentication failure — backend credentials are not picked up. Same chain as provider auth.
+
+terraform plan is the dry run. It reads the current state file. For every managed resource, it calls the provider's refresh ay-pee-eye to fetch the current cloud state. It compares cloud state to desired state — the h-c-l config. And it prints a diff showing what would be created, modified, or destroyed.
+
+The output uses three symbols. Plus create — resource does not exist, will be created. Minus destroy — resource exists in state but config wants it gone. Tilde update in-place — resource exists, some attributes will be changed without recreating it. And minus-slash-plus replace — resource will be destroyed and recreated, usually because an immutable attribute changed.
+
+The minus-slash-plus line is the failure mode you will see most often, and the one to read most carefully. A small config change accidentally triggers replacement of a database, a load balancer, or a vee-pee-see. The plan output is the line of defense against this.
+
+You can save the plan. terraform plan dash o-u-t equals plan dot tee-eff plan writes the plan to a binary file. apply can then be invoked as terraform apply plan dot tee-eff plan, to run exactly that plan with no drift between what was reviewed and what was applied. This is the production-safe pattern. We cover it in notebook six.
+
+Failure modes for plan. Cloud ay-pee-eye rate limit during refresh — providers retry with backoff but very large states can hit ceilings. Splitting state, which we cover in notebook three, is the fix. Drift — config does not match cloud reality and you do not know why. Run terraform plan dash refresh-only to see only the drift, separate from any code changes. Stale plan file — a saved plan loses validity if state changes between plan and apply. Always plan immediately before apply.
+
+terraform apply is the execution. It acquires a state lock so two engineers running apply concurrently cannot corrupt state. The backend determines how locking works — ess-three plus DynamoDB for the a-w-s pattern, Terraform Cloud handles it natively. For each operation in the plan, it calls the provider's create, update, or delete ay-pee-eye. After each successful operation, it updates the state file with the new resource state. And it releases the lock.
+
+The plan-then-apply rule. terraform apply without arguments runs plan itself, prompts for confirmation, then executes. This is fine for local development. For production, use terraform plan dash o-u-t equals plan dot tee-eff plan, then terraform apply plan dot tee-eff plan. The operator who approves the plan and the operator who runs apply are running the same instructions.
+
+Failure modes for apply. Partial apply — one operation in the middle fails. The state file accurately reflects what was applied so far. Re-running apply continues from there. If a partial apply leaves orphaned cloud resources that were created but not yet tracked in state, terraform refresh or terraform import may be needed. Lock contention — someone else is mid-apply, or a previous run crashed without releasing the lock. The error message names the lock holder. terraform force-unlock with the lock i-d clears a stuck lock, but only after confirming no one is actually applying. Plan versus apply divergence — the plan was saved hours ago and the cloud has changed since. Apply errors out before making changes. Re-plan.
+
+terraform destroy is the teardown. It plans every resource in the state as a destroy, then executes. Used for tearing down ephemeral environments — terraform destroy at the end of a continuous-integration test run wipes out the test infrastructure. Also used when retiring a system entirely.
+
+Never use destroy on production state. There is no undo. The standard safety patterns. The life-cycle prevent-destroy meta-argument on production-critical resources, which we cover in notebook two. Trying to destroy them errors out with a clear message instead of silently wiping a database. Separate state files for production so you cannot accidentally destroy production by running destroy in the wrong directory. And continuous-integration gates that block destroy against production state entirely.
+
+A first end-to-end on a-w-s — one ess-three bucket.
+
+The standard "hello world" for a-w-s Terraform. Creates one ess-three bucket with versioning enabled.
+
+The configuration declares two providers — a-w-s and random — and one provider block configuring a-w-s in the us-east-one region. Then three resources. A random i-d resource generates a four-byte hex suffix. An a-w-s ess-three bucket resource creates the bucket with a name built from the prefix "tf-hello" plus the random suffix. An a-w-s ess-three bucket versioning resource references the bucket's i-d and enables versioning on it. And one output exports the final bucket name so it is visible after apply.
+
+Run the lifecycle. terraform init downloads the a-w-s and random providers. terraform plan reports three to add. terraform apply confirms, creates the random i-d first, then the bucket, then the versioning. The output reports the bucket name. a-w-s ess-three list confirms the bucket exists. terraform destroy tears it down — though if you wrote objects to the bucket, you must empty it first, because Terraform will not.
+
+Three resources were created in the right order because Terraform built a dependency graph from the references. The versioning resource references the bucket's i-d, so versioning has to wait for the bucket. The bucket's name references the random suffix, so the bucket has to wait for the random i-d. Terraform computed the order automatically by walking the graph. Notebook two is entirely about how this works.
+
+The bucket name carries a random suffix because ess-three bucket names are globally unique across all of a-w-s. If someone else's account already owns "tf-hello", your apply would fail. The random i-d resource is the standard fix.
+
+What to commit, what to ignore.
+
+A gitignore for a Terraform repo excludes — the dot-terraform directory, recreated by init. The dot-terraform tee-eff-state lock info file. Local state files matching star dot tee-eff-state, only relevant when using the local backend. Variable files that contain secrets, matching star dot auto dot tee-eff-vars and secret dot tee-eff-vars. And crash logs.
+
+You commit — all your dot-tee-eff configuration files, the source of truth. The dot-terraform-dot-lock-dot-h-c-l provider version lock, which pins providers across the team so two engineers running init on the same commit get the same provider binaries. And documentation, READMEs, runbooks.
+
+You do not commit — the dot-terraform directory, recreated on init, often hundreds of megabytes. The tee-eff-state files, only if you are using a remote backend, which we cover in notebook three. For early experimentation with local state, the file can stay in the working directory but never in git, because state can contain secrets. And tee-eff-vars files that contain secrets — use Vault, a-w-s Secrets Manager, or environment variables instead.
+
+The single highest-impact thing you can do on day one is set up the gitignore correctly and add a pre-commit check — detect-secrets, git-leaks — that prevents credential leakage. Recovering from a leaked a-w-s key is rotating credentials, auditing CloudTrail, and explaining to your team why the bill spiked.
+
+Five errors every newcomer hits.
+
+In rough order of frequency.
+
+First. "No valid credential sources found". Provider authentication failed. Diagnose by running a-w-s configure list, echo a-w-s profile, and a-w-s s-t-s get caller identity. If get-caller-identity works at the shell and Terraform still fails, the issue is usually a-w-s profile set in the shell but not in Terraform's environment, or a missing region.
+
+Second. "BucketAlreadyExists". ess-three bucket names are globally unique across all of a-w-s. Someone — possibly with a typo-squat for security research — already owns the name you tried. The random i-d suffix in the end-to-end example is the standard fix.
+
+Third. "Region not specified". Provider has no region. Set region in the provider block, or a-w-s region or a-w-s default region in the environment. The provider does not fall back to a default — you have to be explicit.
+
+Fourth. "State lock". Someone else, or a previous crashed run, holds the state lock. The error message names the lock holder, when they acquired it, and the lock i-d. If it is a stuck lock from a crash, terraform force-unlock clears it. But only after you have confirmed no one is actually mid-apply.
+
+Fifth. Plan shows a resource being destroyed when you only meant to change it. Stop. Read the plan output carefully. Some attributes are "force-new" — changing them triggers replacement instead of in-place update. Database engines. vee-pee-see cider blocks. Instance types on some platforms. k-m-s key policies. All have force-new attributes that show up as minus-slash-plus. The fix depends on the resource. For things that can tolerate it — life-cycle create-before-destroy, so the new resource is healthy before the old one dies. For things that cannot — databases, persistent volumes — a different approach entirely, usually a separate migration, not a Terraform minus-slash-plus.
+
+Reading the plan carefully is the single most important Terraform skill. We come back to it in every notebook.
+
+Notebook two turns to resources, dependencies, and lifecycle. How Terraform builds its resource graph from attribute references. The difference between implicit dependencies through references and explicit dependencies through the depends-on meta-argument. The life-cycle meta-arguments — create-before-destroy, prevent-destroy, ignore-changes — that control how resources are replaced. And the count and for-each iterators for creating many resources from one block. The dependency graph is what makes Terraform's parallelism safe and the minus-slash-plus plan readable.
