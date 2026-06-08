@@ -1,0 +1,5 @@
+Resources, dependencies, and lifecycle.
+
+What is covered.
+
+This notebook walks through how Terraform models infrastructure as a graph of resources. Resource blocks, attribute references and the dependencies they create, explicit ordering when implicit references are not enough, the lifecycle meta-arguments that control destruction and replacement, the count and for-each iterators for multi-instance resources, and how the graph drives parallel execution.

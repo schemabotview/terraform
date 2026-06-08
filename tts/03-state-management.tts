@@ -1,0 +1,5 @@
+State management.
+
+What is covered.
+
+This notebook covers the part of Terraform that most often goes wrong in real teams — state. What the state file is and why it exists, the difference between local and remote backends, why locking matters when more than one engineer is touching the same infrastructure, what drift is and how to detect it, how secrets can leak through state, and the state-surgery commands you reach for when you have to fix it by hand.

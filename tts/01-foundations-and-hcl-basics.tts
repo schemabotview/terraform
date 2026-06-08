@@ -1,0 +1,5 @@
+Foundations and HCL basics.
+
+What is covered.
+
+This notebook lays the groundwork — what infrastructure as code is, where Terraform sits in the landscape compared to CloudFormation, Pulumi, and Crossplane, the syntax of the HashiCorp Configuration Language, how providers work, and the init-plan-apply lifecycle that every Terraform workflow follows. We close with a worked end-to-end example.

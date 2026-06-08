@@ -1,0 +1,5 @@
+Variables, locals, and expressions.
+
+What is covered.
+
+This notebook covers Terraform's expression language. Input variables with type constraints and validation. Locals for derived values and consistent naming. Outputs as the cross-module interface. The collection and object types, conditional expressions, the for expression for transforming collections, and the most useful built-in functions for working with strings, collections, files, and encodings.

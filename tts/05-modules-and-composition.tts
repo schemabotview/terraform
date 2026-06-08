@@ -1,0 +1,5 @@
+Modules and composition.
+
+What is covered.
+
+This notebook covers Terraform's primary mechanism for reuse. Root modules versus child modules. The conventional file structure. The public registry and Git-sourced modules. Version constraints. The composition patterns that show up again and again in real codebases — wrapping, layering, and factory modules. And the equally important question of when a piece of configuration is not yet worth turning into a module.

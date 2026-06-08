@@ -1,0 +1,5 @@
+Advanced features and refactoring.
+
+What is covered.
+
+This notebook covers the features you reach for once the basics are comfortable. Data sources for reading resources you do not own. Dynamic blocks for programmatically generating nested configuration. Provisioners and the good reasons to avoid them. The moved and import blocks that make safe refactoring possible. And the custom validation conditions that let you encode invariants directly in the configuration.

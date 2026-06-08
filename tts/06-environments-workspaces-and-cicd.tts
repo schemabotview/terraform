@@ -1,0 +1,5 @@
+Environments, workspaces, and continuous integration.
+
+What is covered.
+
+This notebook covers how Terraform fits into the actual delivery pipeline. Workspaces and what they really do. The two competing models for dev, staging, and production — workspaces versus separate state. Directory layout patterns that scale. Continuous-integration pipelines that automate the plan and gate the apply. Secret handling so credentials never end up in state. And the tooling ecosystem that has grown up around Terraform in production teams.

@@ -1,0 +1,5 @@
+Real-world patterns and troubleshooting.
+
+What is covered.
+
+This notebook closes the series with the patterns and pitfalls that show up in production. A worked end-to-end Amazon Web Services example built as composed modules. How very large state files get organized by blast radius. Drift detection in production. Cost control through tagging discipline and estimation tools. The debugging workflow when Terraform misbehaves — log levels, state surgery, common errors. And the honest question of when Terraform is the wrong tool entirely.
