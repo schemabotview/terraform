@@ -1,5 +1,103 @@
-Real-world patterns and troubleshooting.
+Welcome to notebook eight, the final notebook of the Terraform track. This notebook closes the series with the patterns and pitfalls that show up in production. A worked end-to-end a-w-s example built as composed modules. How very large state files get organized by blast radius. Drift detection in production. Cost control through tagging discipline and estimation tools. The debugging workflow when Terraform misbehaves. And the honest question of when Terraform is the wrong tool entirely.
 
-What is covered.
+The end-to-end example — a small web app.
 
-This notebook closes the series with the patterns and pitfalls that show up in production. A worked end-to-end Amazon Web Services example built as composed modules. How very large state files get organized by blast radius. Drift detection in production. Cost control through tagging discipline and estimation tools. The debugging workflow when Terraform misbehaves — log levels, state surgery, common errors. And the honest question of when Terraform is the wrong tool entirely.
+Everything in the series, applied. A small web application on a-w-s. A vee-pee-see with three public and three private subnets across three availability zones. An application load balancer in the public subnets. An autoscaling group of ee-see-two instances in the private subnets, behind the load balancer, running the web app. An are-dee-ess Postgres database in the private subnets, accessible only from the autoscaling group. eye-ay-em roles wired correctly — the autoscaling-group instances can read from ess-three and write to CloudWatch. CloudWatch alarms on high see-pee-you, high error rate, low free disk. A CloudFront distribution in front of the load balancer for caching and tee-el-ess termination.
+
+That is the shape. The implementation lives across four composed modules. A network module for the vee-pee-see, subnets, internet gateway, n-a-t gateway, route tables. A compute module for the autoscaling group, launch template, security groups. A data module for the are-dee-ess instance, parameter group, subnet group. And an edge module for the load balancer, target group, CloudFront, a-c-m certificate.
+
+Each module is responsible for one part of the stack. Dependencies flow upward. Edge depends on compute — the target group attaches to the autoscaling group. Compute depends on data — instances have an are-dee-ess connection string. All depend on network.
+
+The root config.
+
+The root live slash production slash main dot tee-eff is a thin orchestration layer that wires the modules together. About eighty lines. It declares the provider with a default-tags block carrying environment, service, managed-by, owner. It defines a common-tags local. Then it calls each module — network, data, compute, edge — passing the right inputs and threading outputs through.
+
+What this is not. A two-thousand-line monolith with every resource inline. The orchestration is eighty lines. All the real complexity — the vee-pee-see's subnet calculations, the autoscaling group's launch template, the are-dee-ess encryption, the load-balancer target group health checks — lives in the modules where it can be tested and reused for staging and dev.
+
+terraform-tee-eff-vars for production is small. Just the values that differ between environments. The region, the vee-pee-see cider, the availability zones, the a-c-m certificate a-r-n. Staging gets a different tee-eff-vars with a different cider, smaller instance sizes, multi-az false. The root main dot tee-eff does not change between environments. Only the inputs.
+
+This is the payoff of every pattern in the series. The variation is at the boundary, not in the code.
+
+Organizing state at scale — blast radius.
+
+When the infrastructure grows past a single Terraform root, the question becomes — where do you split state.
+
+The blast-radius rule. Group resources whose simultaneous failure is acceptable. Split apart anything where co-failure is catastrophic.
+
+Concretely. One state file per environment. Yes, always. Dev plans must not see production state. One state file per major component when components have independent change cadences. Network changes monthly. The app changes daily. Splitting them means an app deploy does not replan the network. One state file per team boundary when different teams own different layers. The platform team owns network and eye-ay-em. The app team owns compute and data. Each team has its own state and its own pipeline.
+
+Cross-state references go through the terraform-remote-state data source, or first-class data sources with stable tags from notebook seven.
+
+The trade-off. More state files mean more pipelines, more terraform-remote-state lookups, more orchestration. Do not split prematurely. The rule of thumb — a single state file with more than two hundred resources is starting to be too coarse. Over five hundred is definitely too coarse. Plan times alone become annoying.
+
+The opposite mistake. Splitting too aggressively. Every micro-component in its own state creates a coordination nightmare. A single change requires applying five states in the right order. Find the natural seams — team boundaries, change-cadence boundaries — and split there.
+
+Drift detection in production.
+
+The state file is Terraform's idea of the world. Cloud reality may diverge. Someone makes a console change. An external tool modifies a tag. An autoscaler updates a count Terraform thought was fixed.
+
+The detection pipeline. A nightly cron, or hourly, iterates over each state file. For each one, run terraform plan dash refresh-only dash detailed-exit-code. Exit code zero means no drift, do nothing. Exit code one means an error — auth, network — page oncall. Exit code two means drift detected. Post to Slack with the diff.
+
+Dash refresh-only makes the plan ignore code changes and report only the cloud-state-versus-state-file diff. Dash detailed-exit-code returns two when changes exist, which continuous integration can branch on.
+
+What to do when drift is detected. Investigate first. Do not apply. Drift often means someone fixed something out of band. Reverting it via Terraform may be the wrong move. Bring the drift into code. If the console change was correct, update the h-c-l to match and apply, which becomes a no-op after refresh. Revert if the drift is unauthorized. If someone changed production by hand without a pull request, revert and discuss what happened.
+
+Production tools. h-c-p Terraform and Spacelift both ship drift detection. They run periodic refreshes and surface drift in the user interface. a-w-s Config rules can flag specific kinds of drift — open security groups, untagged resources. Custom CloudTrail filters detect ay-pee-eye calls outside the Terraform pipeline's eye-ay-em role. "If anyone but Terraform modifies production resources, alert".
+
+The honest framing. Drift in production is information. Treat it as a leading indicator that someone bypassed the pipeline, or that the eye-ay-em boundary is not tight enough.
+
+Cost control — tagging and estimation.
+
+Terraform makes it easy to create infrastructure quickly. That is the feature and the bill. Three patterns control costs.
+
+First. Tagging discipline. Every resource gets a consistent set of tags. The canonical minimum — environment, service, owner email, cost center, managed-by terraform. Apply these via a default-tags provider config so you do not have to remember. Every resource the provider creates picks up these tags automatically. Resource-specific tags merge on top. a-w-s Cost Explorer can then break down spend by tag — by service, by team, by environment. Without consistent tagging, your cost report is one undifferentiated lump.
+
+Enforce tagging with policies. a-w-s Organizations Service Control Policies, open policy agent, Sentinel — all let you reject resource creation that does not carry the required tags. The earlier the rejection — at apply, not at billing review — the cheaper the lesson.
+
+Second. Infracost in pull-request reviews. Infracost estimates the dollar impact of a Terraform plan and posts it as a pull-request comment. "This pull request will add three hundred forty-one dollars per month of a-w-s spend". A reviewer who sees three hundred forty dollars per month on a typo-fix pull request knows something is wrong before approving. Infracost is open-source and integrates with every major continuous-integration system. Some commercial tools include similar functionality.
+
+Third. The money-burning patterns to watch for. n-a-t gateways per availability zone. Thirty-two dollars per month each, plus data-transfer charges. Three availability zones in production equals one hundred dollars per month before any traffic. Fine for production. Overkill for dev. Use single n-a-t gateway in non-production environments. Idle are-dee-ess instances and read replicas — provisioned even when no traffic flows. Use serverless version two or stop instances in non-production. e-b-s snapshots and stale a-m-is — they accumulate forever. Set lifecycle policies. CloudWatch logs without retention. Default retention is "never expire". Set retention explicitly. Forgotten dev environments — terraform destroy at the end of every working day in dev. Continuous integration to alert on long-lived "test" stacks.
+
+The line that separates productive Terraform from expensive Terraform is one of visibility. Knowing what you are spending before the month closes.
+
+The debugging workflow.
+
+When Terraform misbehaves, the workflow.
+
+Step one. Read the error carefully. Terraform's errors are usually specific. "Provider produced inconsistent final plan" means the provider's logic returned different results between plan and apply. "Cycle in graph" means circular references. The error text tells you what.
+
+Step two. tee-eff log equals debug. For deeper investigation, raise the log level. Set tee-eff log to one of trace, debug, info, warn, error. Trace is the firehose — provider ay-pee-eye calls, state reads, every operation. Use debug first. Escalate to trace if needed. tee-eff log path separates Terraform's logs from the user-facing output. Useful when you want to capture logs without losing the readable summary.
+
+Step three. terraform state list and terraform state show. When the question is "what does Terraform think exists", state list for addresses, state show with an address for details. The single best diagnostic tool for "I have no idea what is happening".
+
+Step four. terraform plan with the smallest possible change. If a single pull request's plan looks scary, back the change down to the minimum. Comment out everything except the one resource you care about. Plan. Verify. Uncomment incrementally. This narrows what is actually different.
+
+Step five. Provider-specific debugging. For a-w-s, ay-pee-eye errors usually have specific codes — invalid-parameter-value, limit-exceeded, unauthorized. The Terraform provider passes them through. Search the code. The a-w-s docs explain what triggers each. a-w-s s-t-s get-caller-identity to verify what role is being assumed.
+
+Common error patterns. "Provider produced inconsistent final plan" — usually a provider bug, sometimes user error from referencing a value that depends on apply-time computation in an unexpected place. Try dash target to isolate. Report to the provider repo if it is the provider. "State is locked" — covered in notebook three. Force-unlock only after confirming no live run. "Bucket already exists" — ess-three bucket names are globally unique. Add a random suffix. "Cycle in graph" — circular reference. terraform graph to visualize. Usually fixed by removing a depends-on or restructuring how a value flows. "Plan zero to add, zero to change, zero to destroy, outputs change" — outputs depend on resource attributes that have not been computed. Often harmless. Sometimes a sign of null propagation.
+
+When Terraform is the wrong tool.
+
+After eight notebooks of Terraform advocacy, the honest counterweight. Terraform is not always the right tool.
+
+Cases where Terraform fits poorly. Highly imperative, ephemeral workflows — spinning up a one-off batch job, running it, tearing it down. The cloud's native job ay-pee-eyes or a tool like Nomad are better fits than declarative infrastructure as code. Application configuration — database schema migrations, application secrets that rotate frequently, feature flag values. These belong in app-deployment tooling — Flyway, Liquibase, app-config services — not Terraform. Per-request infrastructure — spawning a Lambda for each user request. That is the Lambda invocation model, not Terraform's. Terraform manages the Lambda's existence. The runtime handles invocation. Continuous reconciliation — if you need the controller to constantly watch for drift and reconcile within seconds — Kubernetes operators, Crossplane — Terraform's plan-and-apply model is the wrong shape. State the cloud already manages well — CloudFormation StackSets, a-w-s Service Catalog, similar a-w-s-native tools have access to data Terraform does not, and integrate more deeply with a-w-s-only operations like rollback.
+
+When to combine tools. Terraform for static infrastructure plus Helm for Kubernetes workloads. Terraform creates the e-k-s cluster. Helm deploys the apps onto it. The boundary is clear. Terraform owns what Kubernetes cannot. Helm owns what is inside Kubernetes. Terraform for cloud resources plus Ansible for on-host configuration — notebook seven's provisioner alternative. Terraform plus ArgoCD — same e-k-s plus Helm pattern, with git-ops for app deployment.
+
+The honest framing. Terraform is the best tool for declarative, change-batched, cloud-resource lifecycle. When your problem has that shape, use it. When it does not, use the right shape's tool.
+
+The throughline.
+
+Eight notebooks in one paragraph.
+
+Terraform's contribution to the field is not h-c-l or the provider ecosystem. It is the plan-apply workflow. Every change is previewed before it happens. Every reviewer sees what every operator will run. The diff between intention and reality is the work product. State management exists to make that diff possible. Modules exist to make the intention readable. Environments exist to keep the changes scoped. Refactoring features exist so the configuration can evolve without surprise.
+
+Three habits, drawn from across the notebooks, separate engineers who use Terraform well from those who fight it.
+
+Read the plan. Every single time. The minus-slash-plus symbol is doing more to prevent outages than any other single feature.
+
+Treat state as load-bearing. Remote backend. Locking. Encryption. Limited access. Never in git. State is the same risk category as the database itself.
+
+Make the variation live at the boundary. Inputs to modules differ between environments. The module's internals do not. The further you can push variation out toward tee-eff-vars and away from if ladders inside modules, the cleaner the system stays.
+
+That is the series. Write declarative. Review the plan. Manage state carefully. And remember that infrastructure is something a team agrees on — not something one person clicks into existence and hopes the rest can follow.
