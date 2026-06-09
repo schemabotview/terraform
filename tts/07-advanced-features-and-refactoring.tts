@@ -1,5 +1,99 @@
-Advanced features and refactoring.
+Welcome to notebook seven of the Terraform track. This notebook covers the features you reach for once the basics are comfortable. Data sources for reading resources you do not own. Dynamic blocks for programmatically generating nested configuration. Provisioners and the good reasons to avoid them. The moved and import blocks that make safe in-place refactoring possible. And the precondition and postcondition validation blocks that let you encode invariants directly in the configuration.
 
-What is covered.
+Data sources — reading the world.
 
-This notebook covers the features you reach for once the basics are comfortable. Data sources for reading resources you do not own. Dynamic blocks for programmatically generating nested configuration. Provisioners and the good reasons to avoid them. The moved and import blocks that make safe refactoring possible. And the custom validation conditions that let you encode invariants directly in the configuration.
+A data source queries the cloud for information about a resource that Terraform does not manage. The data is available throughout your configuration as data dot the-type dot the-name dot the-attribute.
+
+Two common cases. Looking up a resource someone else owns — your team manages the application. Another team manages the vee-pee-see. You read their vee-pee-see by tag, get its i-d and subnets, and wire your app into it. You never create or modify the vee-pee-see. And reading values the cloud provides — current a-w-s account i-d, available availability zones in this region, the latest official a-m-i for Amazon Linux. These are not owned by anyone. They are inherent properties of the cloud.
+
+A data source has no life-cycle block, nothing to manage. It is evaluated at every plan — the value is freshly fetched each time. That makes data sources excellent for "always use the latest matching a-m-i" patterns. And a poor fit for anything that should be stable across plans.
+
+Data sources you will use constantly.
+
+A short field guide of a-w-s data sources that show up in real configurations. a-w-s caller identity — the account i-d and a-r-n running this Terraform, for tagging and eye-ay-em policy interpolation. a-w-s region — the region the provider is configured for. a-w-s availability zones — list of availability zones in the region, paired with for-each to span them. a-w-s a-m-i — look up an a-m-i by owner plus name filter, pinned a-m-i without hardcoding the i-d. a-w-s vee-pee-see — read a vee-pee-see by i-d, tags, or cider, for wiring into someone else's network. a-w-s subnets — read a list of subnets matching filters. a-w-s eye-ay-em policy document — build an eye-ay-em policy as h-c-l blocks instead of a jay-son-encoded string, much nicer. a-w-s eye-ay-em role — read an existing role's a-r-n. a-w-s Secrets Manager secret version — pull a secret's value into a resource, covered in notebook three. a-w-s k-m-s alias and key — resolve a k-m-s key by alias. a-w-s Route fifty-three zone — read a hosted zone by domain. a-w-s organizations organization — read org-level info.
+
+The a-w-s eye-ay-em policy document data source is worth a special mention. It lets you build eye-ay-em policy jay-son from h-c-l blocks instead of writing jay-son inline. The h-c-l version is type-checked, gets syntax highlighting, and is easier to review than a giant jay-son encode call. The dot jay-son attribute serializes the result. Once you have used this pattern a few times, hand-writing eye-ay-em jay-son feels primitive.
+
+terraform remote state — reading another root's outputs.
+
+When you split state across roots — the component-per-environment pattern from notebook six — one root often needs values from another. The terraform remote state data source reads outputs from a remote state file directly.
+
+You declare a data block with backend ess-three and a config that includes the bucket, key, and region of the source state. The outputs attribute is a map of every output declared in the source state. You reference values as data dot terraform remote state dot the-name dot outputs dot the-output-name.
+
+The trade-offs versus first-class data sources. terraform remote state is fast — one ess-three get — but couples you to the other state file's structure. Renaming an output there breaks consumers here. First-class data sources like a-w-s vee-pee-see and a-w-s subnets query the cloud directly. Slower per plan but decoupled. The network root could be rewritten in CloudFormation tomorrow and the consumer would not notice as long as the cloud objects are still tagged the same way.
+
+The modern recommendation, especially in larger orgs — prefer first-class data sources with stable tags as the cross-team contract. terraform remote state is fine within one team that controls both ends and ships them together.
+
+Dynamic blocks — generating nested configuration.
+
+Some resources have nested blocks — not arguments, but sub-blocks that can repeat. The classic example is a security group's ingress block.
+
+What if the rules vary by environment, or are loaded from a variable? You cannot put for-each on the block itself — that is for resources. The answer is a dynamic block.
+
+The structure. Dynamic with a block name in quotes says "I am going to generate zero or more blocks of this type". for-each is what to iterate over — list, set, or map. content brace expression close-brace is the body of each generated block. Inside, the block-name dot key and the block-name dot value work the same as the resource-level each dot key and each dot value.
+
+When to use dynamic blocks. Genuinely variable nested configuration — security group rules from a variable, eye-ay-em policy statements built from a list, autoscaling notifications keyed by environment.
+
+When not to. When the nested blocks are static, just write them out. A dynamic block hiding three hardcoded ingress rules is harder to read than three plain blocks.
+
+Provisioners — and why to avoid them.
+
+A provisioner runs a script or command as part of resource creation or destruction. Three types. local-exec runs a command on the machine running Terraform. remote-exec ess-ess-aitches into the created resource and runs a command on it. file copies a file from the Terraform host to the created resource.
+
+HashiCorp's own documentation calls provisioners "a last resort". Three problems.
+
+First — they are imperative inside a declarative tool. Terraform does not know what a provisioner did. It cannot model the state of the running system after the command. The next plan cannot detect drift from anything a provisioner changed.
+
+Second — they only run at creation. If the script fails, Terraform marks the resource as tainted and recreates it next apply. If the script needs to run on update, it does not.
+
+Third — they couple Terraform's runtime to the resource's network. remote-exec requires ess-ess-aitch from the Terraform host to the resource. That works on a laptop. It is painful in continuous integration with private subnets and bastion hosts.
+
+The modern alternatives. Cloud-init or user-data. Pass a script to the instance via the cloud's native init system. The cloud runs the script. Terraform does not need to reach the instance. This is the right answer for "configure the instance at boot". a-m-i baking — build an a-m-i with Packer, bake the configuration in, then have Terraform launch instances from that a-m-i. Faster boot, no runtime configuration. Configuration management tools — Ansible, Chef, Puppet for ongoing instance state. Terraform handles infrastructure. Configuration-management tools handle on-host configuration. And null resource with local-exec for orchestration tasks — a command-line call to register a webhook, an ay-pee-eye call to trigger a downstream pipeline. This is the one provisioner pattern that is genuinely useful and should be the only one in your codebase.
+
+If you find yourself writing a remote-exec, ask — can this go in user-data instead? The answer is almost always yes.
+
+Moved blocks — safe refactors.
+
+Renaming or relocating a resource in h-c-l changes its address. Without telling Terraform that the new address is the same resource as the old, the plan shows the old being destroyed and the new being created. Disaster for stateful resources. Notebook three covered terraform state move as the imperative fix.
+
+The moved block since Terraform one point one is the declarative answer. Encode the rename in the configuration itself, where it survives a fresh checkout and reads as part of the code.
+
+The structure. A moved block with a from address and a to address. When Terraform processes the configuration, it sees the moved block, looks up the from address in state, and renames it to the to address — in state — without touching the cloud. The next plan shows zero changes.
+
+Moved blocks compose with module restructuring. Moving a resource into a child module. Splitting a module. Renaming a module. Moving a resource into a for-each instance keyed by name. All handled with the right moved blocks.
+
+Lifetime. Leave moved blocks in the code for at least one release cycle so every operator's state catches up. After that, you can delete them — the addresses have all converged. Some teams leave them forever as a historical record. Either is fine.
+
+Why prefer this over terraform state move. State surgery requires the operator to remember to run the command. Moved blocks are self-documenting and reproducible. Every fresh clone of the repo applies the rename correctly. State-surgery commands now exist for one-off fixes, not for planned refactors.
+
+Import blocks — declarative adoption.
+
+The terraform import command from notebook three is imperative. You run it once. State changes. You write the h-c-l after the fact. Terraform one point five ships the import block as the declarative equivalent. Describe the import in the configuration, and Terraform applies it on the next apply.
+
+The structure. An import block with a to address and an i-d. terraform plan reports — one to import. After apply, state has the imported resource. The import block can be removed. The h-c-l stays.
+
+Two big wins over the command. Code review covers the import. The pull request shows the import block alongside the resource definition. A reviewer sees both the intent — "we are adopting this existing bucket" — and the resource it will be matched against. And it composes with terraform plan dash o-u-t. The same plan-then-apply discipline applies. Review the plan. Apply the saved plan. No surprises.
+
+for-each on import blocks since Terraform one point seven lets you import many resources at once. The for-each set declares the resources to adopt. The import block uses each dot value to compute both the target address and the cloud identifier. For large imports — adopting all of someone's existing infrastructure — this is night-and-day better than running terraform import two hundred times.
+
+Precondition and postcondition — invariants in code.
+
+The life-cycle block accepts two more meta-arguments for asserting invariants. Precondition is checked before the resource is created or updated. Use to validate that inputs satisfy what this resource expects. Postcondition is checked after the resource exists. Use to validate that the resource's state matches what we expected.
+
+The structure. A precondition or postcondition inside a life-cycle block. The condition is a boolean expression. The error message is the string shown when the condition is false. self inside the condition refers to the resource itself — its arguments and computed attributes.
+
+Compared to variable validation — variable validations run at the boundary of the configuration. Pre and post conditions run on individual resources, with access to attributes via self, and to other resources' attributes. They catch things variable validation cannot see. Derived inputs. Downstream attributes. Cross-resource constraints.
+
+Use cases. Verify a derived input — a subnet's cider was carved out of a vee-pee-see's cider, assert it actually fits. Verify a data source resolved sensibly — the a-m-i lookup returned an x-eighty-six-sixty-four image, not an arm one. Catch dangerous combinations — arm a-m-i plus x-eighty-six instance type.
+
+The error messages show up in terraform plan output, with a clear pointer to the failing block. Better than a five-minute apply that fails halfway through with a cryptic provider error.
+
+terraform data and the modern null resource.
+
+The old null resource was the catch-all for "I need a resource that does not actually create anything in the cloud, so I can attach triggers or provisioners". It still exists but is deprecated for trigger-style use.
+
+terraform data since Terraform one point four is the modern replacement for derivation. You declare a terraform data resource whose input is the value you want to derive from — for example, a file's base sixty-four ess-h-a two fifty-six hash. The terraform data resource's i-d changes whenever the input changes. Then you reference the terraform data resource's i-d in another resource's life-cycle replace-triggered-by list. When the source changes, the terraform data i-d changes, and the dependent resource is replaced. Even though the dependent's visible config did not change.
+
+Null resource is still useful for local-exec orchestration. A null resource with a triggers block — for example, triggers equals brace endpoint equals the Lambda invoke a-r-n — re-runs its provisioner whenever the trigger value changes. The provisioner runs a script to register a webhook, or to call an external ay-pee-eye. This is the legitimate local-exec pattern. A one-shot orchestration that runs when its trigger changes, doing something Terraform's providers do not cover natively. Do not reach for it casually. Do reach for it when it is the right tool.
+
+Notebook eight closes the series with real-world patterns and troubleshooting. A worked end-to-end a-w-s example — vee-pee-see, application load balancer, autoscaling group, are-dee-ess — built as composed modules. How to organize state at scale by splitting by blast radius. Drift detection in production. Cost control through tagging discipline and estimation tools. The debugging workflow when Terraform misbehaves — tee-eff log, state surgery, the most common error patterns. And the honest question of when Terraform is the wrong tool entirely.
