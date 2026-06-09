@@ -1,5 +1,105 @@
-Environments, workspaces, and continuous integration.
+Welcome to notebook six of the Terraform track. This notebook covers how Terraform fits into the actual delivery pipeline. The two competing models for handling dev, staging, and production — workspaces versus separate state files — and why most production teams pick separate state. Directory layout patterns that scale. Continuous-integration pipelines that automate plan and gate apply. Secret handling so credentials never end up in state or in pipeline logs. And the tooling ecosystem that has grown up around Terraform in production teams.
 
-What is covered.
+The environment problem.
 
-This notebook covers how Terraform fits into the actual delivery pipeline. Workspaces and what they really do. The two competing models for dev, staging, and production — workspaces versus separate state. Directory layout patterns that scale. Continuous-integration pipelines that automate the plan and gate the apply. Secret handling so credentials never end up in state. And the tooling ecosystem that has grown up around Terraform in production teams.
+Most systems run in at least three environments. Development. Staging. Production. Each has slightly different inputs — smaller instance sizes in dev, more replicas in production, different domain names, separate cloud accounts — but the same shape. How do you express that in Terraform?
+
+Three classes of answer. One — same state, branch the config with conditionals. Same dot-tee-eff files. The resources differ based on var dot env. Single state file. Two — workspaces. One config, multiple state files. Three — separate state files per environment. One directory per environment, each with its own backend key.
+
+The first option does not really work at any scale. Dev and production resources end up tangled in the same state. A terraform destroy against dev risks production. The conditionals get harder to read with every new variation. Skip it.
+
+The choice is really between workspaces and separate state. The notebook walks both.
+
+Workspaces — what they really are.
+
+A workspace is a named state file in the same backend. The default workspace is called default. You create more with terraform workspace new and a name. Switching workspaces points the same configuration at a different state.
+
+Inside the configuration, the terraform-dot-workspace built-in returns the current workspace name. You can use it to vary inputs — instance count, instance type, domain name.
+
+Where workspaces fit. Genuinely parallel environments with identical shape and minor input differences. Per-developer sandbox states — terraform workspace new alice. Quick ephemeral environments for continuous-integration tests.
+
+Where workspaces hurt. Production. Three structural problems make workspaces a bad fit for serious environments.
+
+First — same backend. Production state, dev state, and Alice's sandbox state all live in the same ess-three bucket under the same prefix. A misconfigured eye-ay-em policy that grants someone "dev" access actually grants them production state read access.
+
+Second — same configuration. A change to the production resources is the same diff as a change to dev. You cannot test the production config in isolation. The h-c-l is shared. Only inputs differ.
+
+Third — workspace switching is a runtime decision. A teammate runs terraform apply after forgetting to workspace select production. They are now applying against the wrong environment. There is no continuous-integration gate that can see the workspace mismatch from the file system alone.
+
+The HashiCorp docs are explicit on this. The official guidance is — workspaces are not the right solution for production environments. Use separate state.
+
+Separate state — the production pattern.
+
+One directory, or set of directories, per environment. Each with its own backend configuration pointing at a different state key. Same modules. Different roots.
+
+The layout. A live slash directory with dev, staging, and production sub-directories. Each sub-directory has main dot tee-eff with module calls, a terraform-tee-eff-vars file with environment-specific inputs, and a backend dot tee-eff with the key pointing at that environment's state file. A modules slash directory holds the shared shapes — network, compute, app — used by all three.
+
+The wins. Total isolation. Destroying dev cannot touch production. They share no state. Different cloud accounts per environment — often the right answer for blast-radius reasons. Production has its own a-w-s account. Dev is in a sandbox account. The backend bucket itself can be in the production account with cross-account read access for the others. Different eye-ay-em policies per environment. Engineers can have admin in dev, read-only in production, and the same Terraform config respects that boundary at the continuous-integration layer. And continuous integration can be explicit. "This pipeline applies the production directory" is a more auditable statement than "this pipeline runs terraform workspace select production then apply".
+
+The cost. More boilerplate. Each environment has a main dot tee-eff that mostly duplicates the others. The shared shape lives in modules, but the module calls are duplicated. And coordinated upgrades — bumping a module version means updating it in dev, staging, production separately. Continuous integration helps. Tools like Terragrunt help more.
+
+Despite the boilerplate, most production teams pick this pattern. The isolation is worth it.
+
+Directory layouts that scale.
+
+Beyond three environments, the layout becomes part of the problem. Three patterns are common.
+
+Pattern one — live slash plus modules slash. The pattern above. Each environment is a directory under live. Modules are factored into modules slash. Per-environment differences live in terraform-tee-eff-vars or in the root main dot tee-eff of each environment. When this works — small to medium teams, three to five environments. The live slash dev slash main dot tee-eff is a thin orchestration layer that mostly calls modules with environment-specific inputs.
+
+Pattern two — one directory per component, per environment. For larger orgs, "one Terraform root per environment" becomes too coarse. A change to the database should not replan the entire network. Split further — each environment directory contains network, compute, app sub-directories. Each is its own Terraform working directory with its own state file. They reference each other via the terraform-remote-state data source. When this works — medium-to-large teams where different teams own different components, and changes to one component should not replan the others.
+
+Pattern three — Terragrunt. Terragrunt is a thin wrapper over Terraform that addresses the boilerplate problem of patterns one and two. Each environment is a directory with a terragrunt dot h-c-l file that references a shared module config. Terragrunt generates the backend config, fetches the module, and runs Terraform. The main dot tee-eff boilerplate goes away. When Terragrunt fits — large multi-environment, multi-component setups where the boilerplate of pure-Terraform pattern two would be hundreds of nearly-identical files. The cost is a dependency on Terragrunt itself. Some teams find that boundary uncomfortable.
+
+Continuous-integration pipelines — the basic flow.
+
+A production-ready Terraform pipeline runs on every pull request, gates merges on a clean plan, and applies only on the main branch, or via a manual approval step.
+
+The standard flow. Developer pushes a pull request. terraform fmt dash check fails if not formatted. terraform validate fails on syntax errors and type mismatches without needing cloud auth. terraform init configures the backend and fetches providers and modules. terraform plan dash out equals plan dot tee-eff plan saves the plan as an artifact and prints it as a pull-request comment. Reviewer approves. Merge to main. terraform apply with the saved plan from the pull request, or re-plan and apply with manual approval.
+
+A few details worth getting right. terraform fmt dash check catches unformatted code at the gate. No one's h-c-l is ever a debate again. terraform validate is cheap and fast. terraform plan dash out equals plan dot tee-eff plan in the pull-request pipeline saves the plan as an artifact. terraform apply plan dot tee-eff plan in the apply pipeline uses the same plan that was reviewed. No drift between what was approved and what runs. Static analyzers — tf-lint and tf-sec — run static analysis on the h-c-l, catching missing description fields, deprecated provider syntax, and security smells like open security groups and eye-ay-em wildcards. And infra-cost estimates the dollar impact of the plan and surfaces it in the pull request. Reviewers see "this change adds three hundred forty dollars per month" before approving.
+
+The apply step is the part that needs the most care. Either an automatic apply against main, suitable for non-production environments. Or a manual gate that a senior engineer approves, for production. Whichever you pick, the gate should be auditable — who approved, what plan, when.
+
+Plan-apply gating patterns.
+
+Three common gating patterns.
+
+First — plan in pull request, apply on merge. The default for non-production. A GitHub Actions workflow runs plan on pull-request events and apply on push-to-main events. A GitHub environment can require approvals before apply runs.
+
+Second — plan in pull request, comment on diff, manual apply. For production. The plan output is posted as a pull-request comment. After review, an operator triggers the apply job manually. This is what tools like Atlantis automate. The bot reads the pull request, runs terraform plan, posts the output as a comment. A reviewer types "atlantis apply" in the pull-request comments, and the bot executes against the merged code.
+
+Third — speculative plan versus run plan. h-c-p Terraform distinguishes them. A speculative plan runs on pull requests, shows the plan, never applies. Used for review. A run plan runs on merge or trigger, can apply. The apply still requires manual approval for protected workspaces. The cleanest model — every change goes through a speculative plan with no risk, gets approved, becomes a run plan with explicit confirmation if production.
+
+Secret handling in pipelines.
+
+Pipelines need credentials to run Terraform. Two principles.
+
+First — use short-lived, scoped credentials. Long-lived static a-w-s access keys in continuous integration are the largest single source of credential leaks. Modern pipelines use o-i-d-c federation. GitHub Actions, GitLab continuous integration, and CircleCI can assume an a-w-s eye-ay-em role via o-i-d-c. No static credentials stored anywhere. The pipeline gets a short-lived session token. h-c-p Terraform's dynamic credentials feature works the same way. And Vault — a central credential broker that the pipeline authenticates to via o-i-d-c or a Kubernetes service account, and gets time-bounded credentials.
+
+A typical GitHub Actions setup grants id-token write permission, uses the a-w-s actions configure credentials action to assume an eye-ay-em role given by a-r-n. No a-w-s access-key-i-d ever stored as a secret. The o-i-d-c assertion in the GitHub job token is what proves identity. The a-w-s role's trust policy validates the assertion and issues credentials.
+
+Second — application secrets pulled from a secrets manager at plan or apply time. Do not pass database passwords through pipeline variables. Pull from a-w-s Secrets Manager, gee-see-pee Secret Manager, Vault, or h-c-p Terraform's encrypted variables. The pipeline grants the Terraform role permission to read the secret. The value never appears in a config file or a continuous-integration log.
+
+Third — mask sensitive values in logs. Pipeline runners — Actions, GitLab, CircleCI — mask values registered as secrets in their logs. Register them. A plan output that prints database password equals literal-string, because the variable was not marked sensitive, is a credential leak in your build logs.
+
+The tooling ecosystem.
+
+A short tour of the production tooling that wraps Terraform.
+
+Atlantis. Open-source bot that listens to GitHub or GitLab webhooks, runs terraform plan on pull requests, posts the output as a comment, and applies when an operator comments "atlantis apply". Self-hosted. The simplest pull-request-driven Terraform tool. Great for small and medium teams.
+
+Terragrunt. A wrapper that addresses Terraform's lack of dee-are-why for multi-environment setups. terragrunt dot h-c-l files in per-environment directories reference shared module configs. Generates backend config. Manages dependencies between root configs. Supports parallel runs across environments. The de facto choice for large multi-environment deployments. Maintained by Gruntwork.
+
+Spacelift. Commercial. Continuous integration purpose-built for infrastructure as code — Terraform, Pulumi, CloudFormation, Kubernetes manifests. Strong policy enforcement based on the open policy agent. Drift detection built in. Stack-of-stacks management. Used by larger orgs that have outgrown h-c-p Terraform's pricing or features.
+
+Env-zero. Commercial. Similar space to Spacelift. Managed runs. Policy gates. Cost estimation. Drift detection. Often picked alongside h-c-p Terraform comparisons.
+
+h-c-p Terraform — formerly Terraform Cloud. HashiCorp's own offering. Free tier for small teams. Paid tiers add Sentinel policies, open policy agent, run tasks for third-party integrations, single sign-on. The default if your team is starting fresh and wants something managed.
+
+Scalr. Commercial. Strong on multi-tenant and hierarchical access. One Scalr account, many sub-orgs. Used by orgs with complex team structures.
+
+A picking heuristic. Just starting out, small team — h-c-p Terraform free tier. Pull-request-driven, want self-hosted, small team — Atlantis. Multiple environments, many components, hate boilerplate — Terragrunt, often combined with one of the others. Large org, need policy enforcement, willing to pay — Spacelift, env-zero, or h-c-p Terraform paid tier.
+
+The honest framing. Pick the lightest tool that solves your team's actual pain. Many teams successfully run plain Terraform plus GitHub Actions for years. Introducing a wrapper before you have felt the pain is usually wasted complexity.
+
+Notebook seven turns to advanced features and refactoring. The features you reach for once the basics are comfortable. Data sources for reading resources Terraform does not manage. Dynamic blocks for programmatically generating nested configuration. Provisioners and the good reasons to avoid them. The moved and import blocks that make safe in-place refactoring possible, replacing the older terraform state move and terraform import commands. And the custom precondition and postcondition validation blocks that let you encode invariants directly in the configuration.
