@@ -1,5 +1,127 @@
-Modules and composition.
+Welcome to notebook five of the Terraform track. This notebook covers Terraform's primary mechanism for reuse — modules. We walk through why modules exist, the distinction between root and child modules, the conventional file structure, how to call a child module from a parent, the various sources a module can come from, version constraints and how to upgrade safely, the three composition patterns that show up again and again — wrap, layer, and factory — the anti-patterns that hurt teams, and a worked example of a small network module.
 
-What is covered.
+Why modules.
 
-This notebook covers Terraform's primary mechanism for reuse. Root modules versus child modules. The conventional file structure. The public registry and Git-sourced modules. Version constraints. The composition patterns that show up again and again in real codebases — wrapping, layering, and factory modules. And the equally important question of when a piece of configuration is not yet worth turning into a module.
+A Terraform configuration that grows past about five hundred lines is usually doing too much in one place. Multiple stakeholders care about different parts. Changes to "the network" should be reviewable without scrolling through "the database" code. Splitting along stakeholder boundaries is part of what modules buy you.
+
+The other thing modules buy is reuse. The team's standard vee-pee-see pattern. The standard eye-ay-em role layout. The standard "are-dee-ess with k-m-s encryption and backup" recipe. Written once. Instantiated everywhere. The first time you write a vee-pee-see, you wing it. The third time, you wrap the pattern in a module.
+
+The trade-off. Modules add a layer of indirection. To read a module call, you have to read both the call site — which inputs are being passed — and the module itself — what the inputs mean. For very small bits of configuration that are not actually reused, this indirection costs more than it saves.
+
+The honest rule, repeated from the design-patterns track. The rule of three. The first time you write a thing, write it. The second time, notice. The third time, extract a module. Modules written for the first use case are usually wrong because the second use case was not there to constrain them.
+
+Root versus child modules.
+
+A subtle point that confuses newcomers. Every Terraform configuration is a module. The directory you run terraform init in is called the root module. Any module called via a module block is a child module of its caller.
+
+When the root module calls a module block with a source pointing at a child directory, the network module is loaded and instantiated. The root passes inputs, which become var dot the name inside the child. And the root consumes outputs, which it reads as module dot the-name dot the-output.
+
+What is special about the root module. It is the one you run terraform commands against. It owns the backend configuration — only root modules can have a backend block. It can use terraform-dot-tee-eff-vars and command-line dash var flags. Child modules cannot. And it is the only module that has outputs printed by terraform output.
+
+Children get their inputs only from their callers, never from the environment. This is why you cannot pass tee-eff underscore var environment variables into a child module. They are a root-module-only feature.
+
+Conventional file structure.
+
+By convention, a module's files are split by purpose. Terraform does not care about filenames — everything in the directory is concatenated logically — but the convention helps readers.
+
+The standard layout is — main dot tee-eff for resources, the bulk of the module. Variables dot tee-eff for variable blocks, the inputs. Outputs dot tee-eff for output blocks, the outputs. Locals dot tee-eff for locals — optional, sometimes inline in main. Versions dot tee-eff for the terraform block with required version and required providers. And README dot em-dee for documentation.
+
+A few practical notes. Versions dot tee-eff belongs to every module, including children. It declares the providers the module uses. The root module's providers must satisfy every child's requirements. If the root has a-w-s tilde-greater-than five point zero and a child requires a-w-s tilde-greater-than four point zero, init fails.
+
+Children do not configure providers. They declare requirements. The root configures them. If a child needs an aliased provider — multi-region setup — the root passes it explicitly via providers equals brace a-w-s equals a-w-s dot eu close-brace in the module block.
+
+Examples slash is the readme that actually works. Module READMEs are notoriously out of date. An examples directory that is tested in continuous integration keeps the docs honest. Terraform-docs is the standard tool for auto-generating an inputs and outputs table for the README. Run it in continuous integration.
+
+Calling a child module.
+
+The module block instantiates a child. The block label is the local name. References elsewhere use module dot the-name dot the-output-name. Inputs are arguments — matching variable names declared inside the module. Outputs are consumed as module dot the-name dot the-output. The module's output blocks define what is exposed.
+
+Count and for-each work on module blocks too since Terraform zero point thirteen. So you can write module dot network bracket zero or module dot cluster bracket alpha as valid addresses.
+
+Sources — where modules come from.
+
+A module's source argument tells Terraform where to fetch it. Several forms.
+
+Local path — dot slash modules slash network, or dot dot slash shared slash eye-ay-em. When the module lives in the same repo. Public registry — for example, terraform-a-w-s-modules slash vee-pee-see slash a-w-s. Community modules from registry dot terraform dot eye-oh. Private registry — for example, app dot terraform dot eye-oh slash org-name slash module-name. h-c-p Terraform or a private registry. Git — for example, "git colon colon h-t-t-p-s colon slash slash github dot com slash org slash repo dot git slash slash network question-mark ref equals v one point two point zero". For shared modules in a Git repo, no registry. ess-three — for private packaged modules in ess-three. GitHub shorthand — github dot com slash org slash repo slash slash network question-mark ref equals tag. Convenience for GitHub.
+
+Three notes. Local paths re-resolve every init. Edits are picked up immediately. No download. Registry and Git sources cache in dot terraform slash modules. Bumping a version requires terraform init dash upgrade. And question-mark ref equals v-one point two point zero on Git sources pins to a tag, branch, or commit. Always pin to a tag, not to main. A teammate cloning your repo at a different time will get a different version of the module otherwise, and your reproducibility evaporates.
+
+Version constraints.
+
+For registry modules, the version argument takes a constraint string. An exact version pins to that exact version. Greater-than-equals one point two point zero allows any version one point two point zero or newer. Tilde-greater-than one point two point three allows any one point two point x where x is at least three, but not one point three point zero — patch only. Tilde-greater-than one point two allows any one point x where x is at least two, but not two point zero — minor or patch. Combined constraints like greater-than-equals one point two comma less-than two point zero allow any version in that range.
+
+The recommendation. Pin to a minor version with tilde-greater-than one point two for production. This allows patches automatically but not breaking changes. Use exact pinning only when you are tracking a specific build for some reason.
+
+Upgrading. Bump the constraint, then terraform init dash upgrade. Always read the module's CHANGELOG before bumping a major version. A tilde-greater-than two point zero after tilde-greater-than one point two can mean every resource gets replaced. Read the plan very carefully.
+
+Composition pattern one — wrap.
+
+The wrap pattern. A thin module that calls one underlying module and pre-fills opinions specific to your organization.
+
+A typical wrap. The "our vee-pee-see" module internally calls the public terraform-a-w-s-modules vee-pee-see module. It pre-fills the n-a-t-gateway policy — one n-a-t in non-production to save money, one per availability zone in production. It enables flow logs. It applies organization-standard tags. The wrapper's inputs are minimal — name, cider, availability zones, environment, tags. The opinions live in one place.
+
+What the wrap buys you. Every team across the org gets the same n-a-t-gateway policy, the same subnet sizing, the same flow-logging defaults. Without having to remember the dozens of arguments the underlying module exposes.
+
+When to wrap. Whenever you find yourself copy-pasting the same configuration of a community module into three different root configs. The wrapper is the deduplication.
+
+Composition pattern two — layer.
+
+The layer pattern. Build a stack from the bottom up. Each module produces outputs that the next one consumes.
+
+A typical layering. The network module produces vee-pee-see i-d and subnet i-ds. The eye-ay-em module produces role a-r-ns. The compute module consumes both — subnets from network, roles from eye-ay-em — and produces cluster i-d and target group a-r-n. The app module consumes those and runs the workload.
+
+Each layer has a clear input-output contract. Network produces vee-pee-see i-ds and subnet i-ds. eye-ay-em produces role a-r-ns. Compute consumes both and produces cluster plus target group. App consumes those and runs the workload.
+
+The win. Changes are scoped. Swap the compute layer from ee-see-two to e-c-s without touching the network or eye-ay-em layers. Their interfaces do not change. The dependency direction is bottom-to-top. Lower layers do not know about higher ones.
+
+The caveat. The layering must be acyclic. If app outputs feed back into network, you have broken the model. Usually a sign the boundary is in the wrong place.
+
+Composition pattern three — factory.
+
+The factory pattern. One module instantiated n times via for-each or count, each with different inputs producing parallel infrastructure.
+
+A typical factory. Declare a locals dot environments map keyed by dev, staging, production, each value carrying cider, instance type, min size, max size. Then declare module dot env with for-each equals local dot environments, source pointing at an environment module, each variable filled from each dot value. Three nearly-identical environments, parameterized by a small map. Adding a fourth environment is one map entry, not a copy-paste.
+
+The caveat. The factory pattern makes sense when the environments really are parallel and isolated. The moment one environment needs to be wired to another — a shared resource, a peering, an account boundary — the factory pattern breaks down and you go back to explicit modules per environment. This is the boundary between this pattern and the workspaces and separate-state patterns in notebook six.
+
+Designing the module interface.
+
+The hardest part of writing a module is the interface. A few principles that hold up.
+
+Few, well-named inputs. A module with fifty input variables is hard to use and hard to read. Group related inputs into objects. Provide sensible defaults for everything that is not load-bearing. The user should be able to instantiate the module with three or four arguments and get a working result.
+
+Outputs that match the consumer's mental model. vee-pee-see i-d, public subnet i-ds, private subnet i-ds — what the next module will need. Do not expose internal resource attributes that no one will use.
+
+Do not leak implementation details. A module called database should expose connection string and read endpoint, not a-w-s-are-dee-ess-cluster dot main dot i-d. The consumer should not have to know whether the implementation is Aurora or single-instance are-dee-ess.
+
+Object inputs for compound options. Instead of three variables for backup-retention-days, backup-window-start, backup-window-end, which is easy to set inconsistently, use a single var dot backup with retention-days and window as fields of an object. The compound object is one logical unit.
+
+Validate at the boundary. Use validation blocks on variables to enforce invariants. cider is well-formed. Instance type is in an allowed list. Environment is one of dev, staging, production. The errors fire at the module boundary, not three resources deep when something fails to provision.
+
+Do not accept count on the module call as a toggle. Module count equals condition question-mark one colon zero is too easy to break. Referencing module dot db bracket zero dot endpoint when count is zero errors. Prefer a sub-module pattern or an explicit "create" argument the module respects internally.
+
+Anti-patterns.
+
+Three module mistakes that surface again and again.
+
+The premature module. Pulling a five-line resource block into a modules directory because it "might be reused". It almost never is. Now reading the root config means jumping between files. The module's interface had to be designed before the second use case existed to inform it. And when the second use case finally arrives, the interface does not fit. Rule of three beats this every time. Write the resource block inline. Write it again when you need it again. The third time, now you know the shape of the abstraction.
+
+The kitchen-sink module. One module that creates everything. vee-pee-see plus eye-ay-em plus compute plus database plus monitoring plus dee-en-ess. Hundreds of variables, hundreds of outputs, no one really understands all of it, and one breaking change in any sub-component blocks everyone. The fix is layering — split the kitchen-sink into per-domain modules with clear input-output contracts. Each piece can be reasoned about in isolation.
+
+Deep nesting. Module a calls module b calls module c calls module d. Debugging means traversing four layers of indirection. State paths get long. Refactoring becomes hazardous. Two levels of nesting is the practical maximum. A root module that calls a few opinionated wrappers — one level — each of which may call a community module — two levels — is fine. Three or more levels usually signals that the module hierarchy is doing the wrong thing.
+
+A worked example — a small network module.
+
+The shape of a real module. The notebook walks the file structure end to end. Versions dot tee-eff declares required Terraform and a-w-s provider versions. Variables dot tee-eff declares four inputs — name, cider, availability zones, and tags — with a validation block on cider that uses the can function around cider host to verify the input is well-formed. Locals dot tee-eff derives a subnets map from the availability zones using a for expression, and a base-tags map that merges the user's tags with a module-marker tag. Main dot tee-eff declares the vee-pee-see with prevent-destroy, an internet gateway, the subnets via for-each over the locals map, a route table with the default route to the internet gateway, and the route-table associations. Outputs dot tee-eff exposes vee-pee-see-i-d, public-subnet-i-ds as a list, and public-subnets-by-a-z as a map.
+
+A consumer instantiates the module with four arguments — name, cider, availability zones, tags. Four inputs in, three outputs out. The next consumer who needs a vee-pee-see instantiates this module instead of writing twenty lines of h-c-l by hand.
+
+Reading the public registry.
+
+The Terraform registry at registry dot terraform dot eye-oh hosts thousands of community modules. A few worth knowing about. terraform-a-w-s-modules slash vee-pee-see slash a-w-s — the de facto vee-pee-see module. terraform-a-w-s-modules slash e-k-s slash a-w-s — e-k-s cluster plus node groups. terraform-a-w-s-modules slash are-dee-ess slash a-w-s — are-dee-ess with sensible defaults. hashicorp slash consul slash a-w-s — Consul deployment. cloud-posse slash anything — a large family of opinionated modules from Cloud Posse with strong opinions and well-tested code.
+
+Two warnings about the registry. Community modules are not curated. Anyone can publish. A module with five hundred stars might still have a security hole or a deeply-nested abstraction that bites you. Read the source before depending on one in production. And major-version bumps are common. terraform-a-w-s-modules slash vee-pee-see slash a-w-s is on version five as of twenty twenty-four. Each major bump is a real refactor that may cascade through your code. Pin versions. Read CHANGELOGs.
+
+For production work, many teams wrap registry modules behind their own org modules — the wrap pattern above. So a registry-side major bump is buffered by a single internal upgrade, rather than cascading through every team's root configs.
+
+Notebook six turns to environments, workspaces, and continuous integration. How Terraform fits into the actual delivery pipeline. The two competing models for handling dev, staging, and production — workspaces or separate state files. And why most teams pick separate state. Directory layout patterns that scale. Continuous-integration pipelines that automate plan and gate apply. Secret handling so credentials never end up in state. And the tooling ecosystem — Atlantis, Terragrunt, Spacelift, h-c-p Terraform — that has grown up around Terraform in production teams.
