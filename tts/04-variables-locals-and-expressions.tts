@@ -1,5 +1,103 @@
-Variables, locals, and expressions.
+Welcome to notebook four of the Terraform track. This notebook covers Terraform's expression language. Input variables with type constraints and validation. Locals for derived values and consistent naming. Outputs as the cross-module interface. The collection and object types. Conditional expressions. The for expression for transforming collections. Splat expressions. And the most useful built-in functions for working with strings, collections, files, and encodings.
 
-What is covered.
+The three input concepts.
 
-This notebook covers Terraform's expression language. Input variables with type constraints and validation. Locals for derived values and consistent naming. Outputs as the cross-module interface. The collection and object types, conditional expressions, the for expression for transforming collections, and the most useful built-in functions for working with strings, collections, files, and encodings.
+Every module — root or child — has three knobs for working with data. The variable block, which is input. A value passed in, set by command line, by tee-eff-vars file, by environment variable, or by a parent module call. The locals block, which is internal. A named value derived inside the module. And the output block, which is output. A value exposed out — printed after apply, or returned to a parent module.
+
+A useful mental model. Variables and outputs are the module's public interface. Locals are its internals. Treat the interface as you would a function signature — minimal, well-named, documented.
+
+Notebook five turns variables and outputs into the module interface explicitly. This notebook focuses on the language features that make them work — types, validation, expressions, and the function library.
+
+Input variables.
+
+A variable block declares an input. Four arguments matter. The type — the type constraint. If omitted, the type is any, meaning anything goes. Almost always supply a type. The default — the value when no other source provides one. Without a default, the variable is required. The description — shows up in terraform plan errors, in generated docs, and is read by anyone using the module. Write it. And the validation block — a condition expression that must evaluate to true, and an error message when it does not. Multiple validation blocks compose with logical and.
+
+Inside the module, the variable is referenced as var dot the name.
+
+Where variable values come from. Six sources, in precedence order, later wins over earlier. First — the default in the variable block. Second — environment variables named tee-eff underscore var underscore the variable name. Third — the file terraform-dot-tee-eff-vars in the working directory, if present. Fourth — files matching star dot auto dot tee-eff-vars in the working directory, in lexical order. Fifth — dash var-file flags on the command line, in the order given. Sixth — dash var name equals value flags on the command line, in the order given.
+
+In practice, the common pattern. A terraform-dot-tee-eff-vars file committed to git holds the non-secret defaults like region and instance count. A secret-dot-tee-eff-vars file that is gitignored holds the secrets, applied with dash var-file at the command line. For continuous integration, pass the variable file or tee-eff underscore var environment variables. Never inline secrets on the command line. They show up in shell history and process listings.
+
+Type constraints.
+
+Terraform's type system is simple but precise. Three primitive types, three collection types, two structural types, plus the any escape hatch and null.
+
+Primitives. String, number, boolean. Conversion is automatic where it makes sense — string "three" to number three — but explicit is better than implicit.
+
+Collections. All elements must be the same type. List of t is ordered, integer-indexed. Set of t is unordered and deduplicated. Map of t is string-keyed and value-typed. So a map of number maps strings to numbers.
+
+Structural types. Elements can be different types. Object of brace attribute equals type close-brace declares a fixed set of named attributes with specific types. Tuple of bracket type-list close-bracket is fixed-length and position-typed.
+
+The optional wrapper since Terraform one point three marks an attribute as optional with a default value. Without it, every attribute in an object is required.
+
+Any. Type equals any accepts anything. Useful for module interfaces that genuinely take arbitrary structures. But most of the time it is a lazy alternative to writing a real type constraint. Prefer concrete types.
+
+Null. A literal value meaning "no value". Most arguments accept null as "skip this attribute". The resource behaves as if the argument was not set. The null-resource of yesteryear is unrelated — it is a deprecated resource type, not the type system's null.
+
+Locals — derived values.
+
+A locals block declares one or more named values that are computed once and reused. Use it for three things. Naming consistency — generate every resource's name from one local. Repeated expressions — do not write the same merge call three times. Compute it once. Readability — give a long expression a name that says what it represents.
+
+A typical pattern. Declare local dot environment, local dot region, local dot name prefix as the environment plus region. Declare a common-tags map with environment, region, and managed-by terraform. Then every resource sets bucket equals local dot name prefix dash logs, and tags equals local dot common tags.
+
+Locals are referenced as local dot the name. Multiple locals blocks per file are allowed. All merged into one namespace.
+
+A practical pattern. A single locals dot tee-eff file at the top of the module holds derived names, tag maps, and computed inputs. It functions as the "where did this name come from" lookup for the whole module.
+
+Outputs.
+
+An output block exposes a value. Two audiences. Humans — the value is printed after terraform apply, queryable via terraform output. And other modules — when this module is used as a child, its outputs are visible as module dot the-name dot the-output. We cover that in notebook five.
+
+The arguments. Value — the expression to expose. Anything that evaluates. A single attribute, a literal, a for expression, a function call. Description — surfaced in terraform output and in generated docs. Sensitive equals true — Terraform masks the value in plan and apply output. Sensitive value instead of the literal. But the value is still in state in plain text — see notebook three. Use sensitive for output convenience, not for security.
+
+At the command line. terraform output prints all outputs. terraform output dash raw with a name prints one without quotes — useful in shell pipelines. terraform output dash jay-son prints the structured form for tools.
+
+Conditional expressions.
+
+The ternary — condition question-mark true-value colon false-value — is the only conditional form in h-c-l.
+
+A few patterns worth knowing. Toggle a resource on or off. Set count equals var dot enabled question-mark one colon zero. count equals zero means the resource does not exist. count equals one means it does. Reference as the resource name bracket zero.
+
+Null to skip an argument. Set k-e-y-name equals var dot k-e-y-name not-equals empty-string question-mark var dot k-e-y-name colon null. When the variable is empty, null means "do not set k-e-y-name". The resource behaves as if the argument was not written.
+
+The trap. Mixed types are an error. Both branches of question-mark colon must produce the same type. The expression "var dot env equals production question-mark large colon one" errors at plan time. One branch is string, the other is number.
+
+For expressions — transforming collections.
+
+The for expression is Terraform's list comprehension. Two forms. One produces a list, one produces a map.
+
+The list form is bracket-for x in list colon expression-close-bracket. The map form is brace-for k comma v in map colon new-k fat-arrow new-v close-brace. Both can take an if clause for filtering — bracket-for s in var dot subnets colon s if s dot environment equals production-close-bracket only includes elements where the if clause is true.
+
+A realistic example — building tags. Declare local dot base tags as the shared environment and team tags. Declare local dot per resource as a map from name to extra tags. Then declare local dot all tags as a for expression — brace for name comma extra in local dot per resource colon name fat-arrow merge of local dot base tags, extra, and a name tag. The result is one combined tag map per resource, with the resource name baked in.
+
+For is the workhorse of nontrivial h-c-l. Once you read it fluently, most "how do I express this" questions answer themselves.
+
+Splat expressions.
+
+When a resource has many instances via count or for-each, you often want a list of one attribute across all of them. Splat is the shortcut.
+
+The bracket-star-bracket splat after a resource address produces a list of the named attribute across every instance. So a-w-s instance dot web bracket-star-bracket dot i-d is the list of i-ds across all instances. Equivalent to a for expression — bracket-for i in a-w-s instance dot web colon i dot i-d-close-bracket.
+
+The bracket-star-bracket splat works on count resources and for-each resources alike, returning a list of attribute values.
+
+The limitation. Splat cannot chain through nested attributes that are themselves lists. For complex traversal, for is more flexible. Splat is fine for one level deep — getting a list of subnet a-r-ns. For complex shapes — building a map of availability zone to cider block — use for.
+
+Built-in functions — the ones you will use.
+
+Terraform ships about a hundred built-in functions. You will reach for maybe twenty regularly. Categorized.
+
+String. Format with a printf-style spec. Replace for substring or regex replacement. Lower, upper, title for case manipulation. Trim space, trim prefix, trim suffix for trimming. Join with a separator and a list to make a string. Split with a separator and a string to make a list.
+
+Collection. Merge for combining maps — later wins on conflicts. The standard tag-merging idiom. Concat for combining lists. Keys and values for extracting from a map. Length works on string, list, set, map. Contains for membership. Lookup for safe map access with a default. Tolist, toset, tomap for explicit conversion. Distinct for deduplication. Flatten for one level of unnesting — handy for transforming for-each data.
+
+File and encoding. File with a path reads a file's contents as a string. The path is resolved relative to the module. Templatefile with a path and a vars map renders a dot tee-pee-el template file. The modern alternative to inline heredocs. jay-son encode and jay-son decode round-trip with jay-son — used heavily for eye-ay-em policy documents. yam-el encode and yam-el decode, same for yam-el. Base sixty-four encode and decode for cloud-init user data and Lambda zip files.
+
+Numeric and time. Max, min, floor, ceiling — the usual. Timestamp returns the current i-s-o eight thousand six oh one time. Be careful — using it in a resource argument makes the resource update on every plan. Format date formats a timestamp with a spec.
+
+Cryptographic and hashing. m-d-five, s-h-a two fifty-six for hashes. File m-d-five and file s-h-a two fifty-six hash a file's contents. Common in Lambda deployment for the source code hash argument. u-u-i-d generates a u-u-i-d. Same caveat as timestamp — produces a new value every plan. Use random i-d for stable identifiers.
+
+i-p and cider. Cider subnet with a prefix, new bits, and a network number carves a subnet out of a larger cider. Indispensable for vee-pee-see layouts. Cider host with a prefix and a host number returns a host address from a cider.
+
+The full function reference lives at terraform dot eye-oh slash language slash functions. Bookmark it. You will consult it often.
+
+Notebook five turns to modules and composition. How to package configuration as reusable units. Root versus child modules. The conventional file structure — main dot tee-eff, variables dot tee-eff, outputs dot tee-eff, versions dot tee-eff. The public registry. Versioning. The composition patterns — wrapping, layering, factory — that show up in real codebases. And the equally important question of when not to make a module yet. Variables and outputs from this notebook become the module's interface. Locals stay its internals.
