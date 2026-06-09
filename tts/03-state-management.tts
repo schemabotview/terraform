@@ -1,5 +1,135 @@
-State management.
+Welcome to notebook three of the Terraform track. This notebook covers the part of Terraform that most often goes wrong in real teams — state. We walk through why state exists, what is actually inside the state file, why local state stops working the moment a second person joins, the two standard remote-backend setups, how state locking actually works, what drift is and how to detect it, how secrets leak through state, and the surgery commands you reach for when configuration and cloud disagree and you have to fix it by hand.
 
-What is covered.
+Why state exists.
 
-This notebook covers the part of Terraform that most often goes wrong in real teams — state. What the state file is and why it exists, the difference between local and remote backends, why locking matters when more than one engineer is touching the same infrastructure, what drift is and how to detect it, how secrets can leak through state, and the state-surgery commands you reach for when you have to fix it by hand.
+Terraform is declarative. Your dot-tee-eff files describe what should exist. But Terraform also has to know what currently exists, so it can compute the diff.
+
+The trivial-but-wrong answer is "ask the cloud every time". That works for a single resource type but breaks at scale. How does Terraform know which of the ten thousand ee-see-two instances in your account it is responsible for managing? Some belong to you. Others belong to a different team. Others to a side project that does not use Terraform at all.
+
+The state file is Terraform's answer. It records, for every resource address in your config, the corresponding real cloud object. Its identifier, its computed attributes, its dependencies. State maps a-w-s ess-three bucket dot logs to "the bucket whose i-d is tf-hello something, whose a-r-n is the matching a-r-n, whose region is us-east-one".
+
+Three things state lets Terraform do. Identify resources to manage — anything in state is managed by this configuration. Anything not in state is not. Skip the refresh round-trip per resource — state holds the last-known attributes. Refresh updates them but starts from a baseline. And detect drift — cloud says one thing, state says another, the diff is drift.
+
+Without state, every plan would have to scan the entire cloud account and reconstruct ownership. Slow, expensive, and ambiguous.
+
+What is actually in the state file.
+
+terraform-dot-tee-eff-state is jay-son. Five fields are worth knowing.
+
+Serial — a monotonically increasing counter, incremented on every write. Used to detect concurrent modification.
+
+Lineage — a u-u-i-d identifying this state file. Cloning a state file gives the same lineage. Making a new one, via init against a fresh backend, gives a different lineage. Mismatched lineage between local and remote is one of the louder errors.
+
+Outputs — the values exported by output blocks, cached so other states can read them via the terraform remote state data source.
+
+Resources — the heart of the file. One entry per resource address, with one or more instances. Multiple if count or for-each is used. Each instance carries every attribute the provider returned.
+
+Schema version — the provider's idea of what shape the attributes are in. Provider upgrades occasionally migrate this number forward.
+
+The critical fact about state. State can contain secrets. Database passwords. eye-ay-em access keys. tee-el-ess certificates. Anything you write into a resource that the provider stores in attributes ends up in plain text in the state file. That is the single biggest reason the file needs to be stored carefully and never committed to git.
+
+Local state — fine until it is not.
+
+When you run terraform init without configuring a backend, Terraform uses the local backend. State is written to terraform-dot-tee-eff-state in the working directory.
+
+This works for one person experimenting. It breaks the moment a second person needs to apply against the same infrastructure. Three failure modes.
+
+No shared state. Alice's terraform-tee-eff-state and Bob's are independent files. Alice creates three resources. Her state shows them. Bob's state still shows zero. When Bob runs apply, he tries to recreate everything. Either it errors out from name conflict, or the cloud now has duplicate resources Alice's state does not know about.
+
+No locking. Two apply runs concurrently will corrupt state. The two write the file at different points. One wins. The other's changes are lost.
+
+Easy to lose. Laptop dies. Working directory deleted. Accident in remove. The state file is gone, and Terraform has no record of what it created. The cloud resources still exist. You have just lost your map to them.
+
+The solution is a remote backend. State lives in a shared store — ess-three, Terraform Cloud, Azure Storage, gee-see-ess, Consul — and is locked during writes.
+
+The honest rule. Use a remote backend from day one of any team work, and from the moment you create production infrastructure. The cost is twenty minutes of setup. The savings are sleepless nights.
+
+The ess-three plus DynamoDB pattern.
+
+The canonical a-w-s remote-backend setup. State in ess-three, which is durable and versioned. Locking in DynamoDB, which is consistent and cheap.
+
+The configuration declares a terraform block with a backend ess-three argument. The bucket is the ess-three bucket that holds state. The key is the path to this config's state file inside the bucket. Convention is to organize by system slash component slash terraform dot tee-eff-state. The region is the bucket's region — it does not have to match the resources you are managing. The DynamoDB table is the table holding lock records. One per organization is fine. Encrypt true encrypts state at rest in ess-three.
+
+Two production requirements. The ess-three bucket must have versioning enabled so you can roll back a corrupted state. The DynamoDB table must have a primary key named exactly "lock-i-d" of string type.
+
+You only set this up once per organization. The bucket and table that hold state for everything else are usually created by a tiny bootstrap configuration with local state, then you migrate. We come back to this at the end of the notebook.
+
+Terraform Cloud, also called h-c-p Terraform.
+
+HashiCorp's hosted backend, now branded h-c-p Terraform. State, locking, runs, role-based access control, audit log, secret variables — all managed.
+
+The configuration is a terraform-cloud block with an organization and a workspaces name.
+
+What you get. State management — versioned, encrypted, no ess-three bucket to babysit. Locking — built-in, no DynamoDB table. Remote runs — apply runs on h-c-p's workers, not your laptop. Centralized logs. Variable storage — sensitive variables stored encrypted, injected into runs. Role-based access control and single sign-on — gate plan and apply by team membership. Policy enforcement on paid tier — Sentinel or open policy agent policies that gate applies.
+
+The cost. Vendor lock-in — you can leave, but it is another migration. And the Business Source License consideration since Terraform one point six. OpenTofu users typically use ess-three plus DynamoDB, or third-party tools — Scalr, Spacelift, Env-zero — as alternatives.
+
+For new teams without strong opinions, h-c-p Terraform is the fastest path to a production-safe setup. For teams already on a-w-s with strong ess-three instincts, ess-three plus DynamoDB is just fine.
+
+State locking.
+
+When Terraform writes state, it first acquires a lock in the backend's locking mechanism. Two apply runs cannot proceed concurrently. The second one blocks, or fails, until the first releases.
+
+For the ess-three plus DynamoDB backend, locking happens via a write to the DynamoDB table. The item carries the lock i-d, the operation type, who is holding it, when it was created, and the path to the state file.
+
+When apply completes, Terraform deletes the item. When the next run tries to acquire the lock, it sees the item gone and proceeds.
+
+What can go wrong. Crashed apply — the process dies, control-see-control-see, network drop, out-of-memory kill, before releasing. The lock item lingers. The next run errors out with "state is locked" plus the lock holder's info. The fix is terraform force-unlock with the lock i-d, which is in the error message. Run it only after confirming no one is actually applying. Force-unlocking a live run corrupts state.
+
+Backend misconfiguration — DynamoDB table does not exist. eye-ay-em permission denied. Init fails before lock is even attempted. Fix the backend setup.
+
+Some shops set a lock timeout with terraform apply dash lock-timeout equals five minutes, so continuous-integration runs wait politely instead of immediately failing. The default timeout is zero — immediate failure.
+
+Drift — when reality disagrees.
+
+Drift is when the actual cloud state differs from the state file. Causes — someone changed something in the console. An external tool modified a tagged attribute. A failed apply left a half-modified resource. A provider bug caused a silent attribute drift.
+
+Detecting drift. Run terraform plan dash refresh-only. This refreshes every resource from the cloud, updating the state file's view, and reports any differences from the previous state. No changes to config are considered. This is only drift. The output is the diff between state-before-refresh and state-after-refresh.
+
+If the output shows an instance type changed from tee-three dot micro to tee-three dot small, someone resized the instance in the console. Terraform now knows. You decide whether to update the h-c-l to match — accept the drift — or run terraform apply to revert it.
+
+Production-grade drift detection is a scheduled continuous-integration job that runs terraform plan dash refresh-only dash detailed-exit-code periodically. Nightly. Hourly. Exit code two means drift detected. The job pages an oncall. a-w-s Config, CloudTrail-based custom rules, or third-party tools all hook into this idea.
+
+Sensitive values — how state leaks them.
+
+Terraform tries to mask sensitive values in plan output using the sensitive-equals-true argument on variables and outputs, and on certain provider-marked attributes. But the values are still in the state file, in plain text.
+
+If you declare a variable database password with sensitive true, then pass it to a database resource's password argument, the plan output shows "password equals sensitive value". But the state file shows the actual password string.
+
+Three rules for handling secrets. Never commit state to git. Even if your gitignore is correct, never trust it for a state file with secrets. Use a remote backend with encryption. Encrypt state at rest — encrypt true on the ess-three backend. h-c-p Terraform encrypts by default. Limit who can read state. ess-three bucket policy. k-m-s key access. h-c-p team permissions. State-read access is secret-read access.
+
+For the secrets themselves, pull from a secrets manager rather than passing through Terraform variables. A data block reading from a-w-s Secrets Manager gets the value at plan time. The password is still in state, but at least the source of truth is the secrets manager. Rotation happens there, and Terraform picks up the new value next apply. This is the modern best practice.
+
+State surgery — the commands.
+
+When the configuration and the state disagree in a way apply cannot fix on its own, you reach for the terraform state subcommands. Always back up state before running any of these.
+
+terraform state list prints every resource address in state. The starting point for any state-surgery task — "what is actually in there".
+
+terraform state show with an address prints one resource's attributes from state. Useful for verifying what Terraform thinks exists, especially before a destructive operation.
+
+terraform state pull writes the entire state file to standard output. terraform state push uploads a local file as the new state. The duo lets you edit state by hand. Use only when the higher-level commands cannot do what you need. Direct edits are how state gets corrupted.
+
+terraform state move — renaming. When you rename a resource in h-c-l, Terraform does not know it is the same resource. The plan shows the old one being destroyed and a new one created. Disaster for stateful resources. terraform state move tells Terraform — the resource at address a is the same thing as address b. Update state without touching the cloud. After this, terraform plan shows no changes. State and config agree on the new address.
+
+The modern alternative since Terraform one point one is the moved block, declared inline. This survives a fresh checkout — it is part of the configuration. State surgery via state move requires the operator to remember to run the command. Moved blocks are self-documenting and reproducible. Prefer moved blocks for new refactors. Keep state move for one-off ad-hoc cleanups. We cover moved blocks in detail in notebook seven.
+
+terraform state remove — forgetting. Drop a resource from state without destroying the cloud object. The cloud resource keeps running. Terraform just stops managing it. When to reach for this — migrating a resource to a different Terraform configuration. Adopting unmanaged infrastructure that Terraform created but should no longer track. Cleaning up after a botched import — state has a wrong entry that does not match any h-c-l. What it does not do — delete the cloud resource. The resource is still in a-w-s. Running terraform apply after this will either create a duplicate, if the h-c-l still defines it, or leave it as an orphan, if the h-c-l is also removed.
+
+terraform import — adopting existing resources. You created an ess-three bucket through the a-w-s console six months ago. Now you want it managed by Terraform. First, you write the resource block in h-c-l with the bucket name. Then you run terraform import, passing the target address and the cloud identifier — for ess-three, the bucket name. After this, state has the bucket's full attributes. The resource block in h-c-l is matched against state. The next terraform plan reports any config drift — attributes the cloud has that the h-c-l does not yet declare. Fill in the h-c-l to match, or accept the drift, and you are done.
+
+The pitfalls. Forgetting the resource block — import requires a target address. The block has to exist in h-c-l first. Resource identifiers vary by type. ess-three wants the bucket name. ee-see-two wants the instance i-d. The provider docs list the import syntax for every resource type. No bulk import — importing two hundred resources one by one is painful. Tools like Terraformer help but require careful review.
+
+The import block since Terraform one point five is the modern declarative form. We cover it in notebook seven. For one-off imports, the command is still fine.
+
+The bootstrap problem.
+
+Setting up an ess-three backend requires an ess-three bucket and a DynamoDB table. But those resources should themselves be managed by Terraform. Catch-twenty-two — the configuration that creates the backend cannot store its state in the backend it is creating.
+
+The standard solution is a bootstrap configuration with local state, applied once. The bootstrap declares the ess-three bucket — with versioning, encryption, and prevent-destroy — and the DynamoDB table — with the lock-i-d primary key and prevent-destroy. Apply this once with local state. Commit the resulting terraform-dot-tee-eff-state to a separate, private repository. Or import it into the same backend once it exists — chicken-and-egg, but possible.
+
+From then on, every other Terraform configuration in the organization uses the ess-three backend pointing at this bucket and table. The bootstrap config itself is rarely changed. Versioning plus prevent-destroy means its blast radius stays small.
+
+A common variant — put the bootstrap output into Terraform Cloud or a separate state, and have the rest of the org's configurations read it via the terraform remote state data source.
+
+Notebook four turns to variables, locals, and expressions. The input side of Terraform. Input variables with types and validation. Locals for derived values and naming. Outputs as the cross-module interface. The type constraints — primitives, collections, objects. Conditional expressions and the for expression for transforming collections. And the built-in function library for strings, files, encoding, and collections — the workhorse functions you reach for in every real configuration.
