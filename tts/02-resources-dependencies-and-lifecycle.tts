@@ -1,5 +1,159 @@
-Resources, dependencies, and lifecycle.
+Welcome to notebook two of the Terraform track. This notebook walks through how Terraform models infrastructure as a graph of resources. Resource blocks and what one represents. Attribute references and the dependencies they create. Explicit ordering when implicit references are not enough. The life-cycle meta-arguments that control destruction and replacement. The count and for-each iterators for multi-instance resources. And how the graph drives parallel execution. By the end you will know exactly why your plan output looks the way it does and how to keep the minus-slash-plus replace symbol from showing up by surprise.
 
-What is covered.
+The resource — Terraform's atomic unit.
 
-This notebook walks through how Terraform models infrastructure as a graph of resources. Resource blocks, attribute references and the dependencies they create, explicit ordering when implicit references are not enough, the lifecycle meta-arguments that control destruction and replacement, the count and for-each iterators for multi-instance resources, and how the graph drives parallel execution.
+A resource block tells Terraform "manage one piece of infrastructure of this type, with these arguments". The block is named by two strings. The type, which is a name the provider exposes — like a-w-s ess-three bucket or a-w-s instance. And the name, which is an identifier you choose, scoped to the module. Together they form the resource's address. a-w-s ess-three bucket dot logs. a-w-s instance dot web.
+
+The resource address is the unit of every state operation, every plan diff, every Terraform command. terraform state list prints them. terraform plan reports changes by address. terraform import brings a cloud resource under a specific address. Memorize the shape — it shows up everywhere.
+
+What a resource is. A one-to-one mapping to a thing in the cloud — usually a single ay-pee-eye object. One a-w-s ess-three bucket block creates one bucket. One a-w-s instance block creates one ee-see-two instance.
+
+What a resource is not. A collection. If you want three buckets, you need three resource blocks, or one block with count or for-each, which we cover later in this notebook.
+
+Why the type and name are split. The type tells the provider what kind of ay-pee-eye call to make. The name disambiguates between multiple resources of the same type in the same module. a-w-s ess-three bucket dot logs and a-w-s ess-three bucket dot uploads are two different buckets. The provider does not care which name you chose, but every reference in your code is by address.
+
+Attribute references — building the graph.
+
+Every resource exposes a set of attributes — the values the provider returned when the resource was created. Some are arguments you set, like bucket or am-eye. Others are computed by the cloud, like a-r-n, i-d, private i-p, public dee-en-ess.
+
+You reference attributes from other resources with dotted addresses. The reference a-w-s ess-three bucket dot logs dot i-d says — the i-d attribute of the a-w-s ess-three bucket named logs. Two consequences fall out of writing that reference.
+
+First — the resource you wrote that reference in now depends on the bucket. Terraform must create the bucket before the dependent resource can be created, because the bucket's i-d is not known until then.
+
+Second — the dependent resource will be re-evaluated whenever the bucket's i-d changes. In practice, if the bucket is replaced, the dependent is updated to point at the new bucket.
+
+The dependency is implicit. It exists because of the reference. You did not have to declare it explicitly. This is the dominant case in real Terraform code. Ninety-nine percent of dependencies arise from the references you naturally write to wire resources together.
+
+Inside strings, use the dollar-sign-brace interpolation syntax. Outside strings, use bare references. Both are equivalent. Modern h-c-l prefers the bare form when possible.
+
+The directed acyclic graph.
+
+Terraform reads every resource block, finds every attribute reference, and builds a directed acyclic graph of dependencies. Each node is a resource. Each edge is a reference from one resource to another.
+
+The graph drives three things. Order — Terraform processes a resource only after every dependency has finished. For the ess-three bucket example from notebook one, the random i-d is created first, then the bucket, then versioning. Parallelism — resources with no dependencies on each other run in parallel. By default, up to ten at a time. Twenty independent eye-ay-em users get created in batches of ten concurrently. And replacement propagation — if a resource gets minus-slash-plus replaced, every resource that references its computed attributes is re-planned with the new values.
+
+The graph is acyclic by construction. Circular references are caught at plan time with a clear error. terraform graph renders the graph as Graphviz dot output if you want to see it. A useful debugging exercise on a tangled codebase. Most "why is this thing being replaced" questions resolve by looking at the graph.
+
+depends-on — when implicit is not enough.
+
+Sometimes a dependency exists but the code does not have a reference to encode it. Two common cases.
+
+First. A side effect the cloud requires but the ay-pee-eye does not expose. An eye-ay-em role policy attachment must exist before an ee-see-two instance that uses the role's instance profile starts. The instance does not reference the attachment in h-c-l — but the cloud will reject the instance launch if the attachment is not in place yet.
+
+Second. Provisioning order across services. A Lambda function might need a logging-policy attachment to exist before it is invoked. The Lambda itself does not reference the policy.
+
+In both cases, you declare the dependency with the depends-on meta-argument. The Lambda's role argument references the eye-ay-em role, which gives an implicit dependency on the role. But the policy attachment on that role is not referenced anywhere in the Lambda block. So Terraform might create the Lambda before the attachment is in place. The depends-on argument, taking a list of resource addresses, forces the ordering.
+
+The honest rule. depends-on is a code smell most of the time. Reach for it only when the implicit graph is genuinely insufficient. eye-ay-em, Lambda permissions, and a few cross-region patterns. The fact that it exists means you should always look for a reference first. If you find yourself writing depends-on because "it does not work without it", investigate why before committing.
+
+depends-on can also reference modules — depends-on equals module dot network means "wait for everything in the network module".
+
+The life-cycle meta-argument.
+
+Every resource accepts a life-cycle block that controls how Terraform replaces, destroys, or ignores changes to it. Four arguments inside, each solving a specific class of problem. We walk each one.
+
+Create before destroy.
+
+When Terraform replaces a resource — because an immutable attribute changed — the default order is destroy first, then create. This is the safe order for most resources. Destroying a network interface frees the i-p before the new one tries to claim it.
+
+For resources that hold state or that must remain reachable, this is the wrong order. Replacing an ee-see-two instance with destroy-first means the old one is gone for the seconds-to-minutes the new one takes to come up. Setting create-before-destroy to true flips the order. The new resource is created and healthy before the old one is destroyed.
+
+When it works. Resources whose names you can let Terraform generate — use name-prefix, not name — so the new resource does not collide with the old. Resources without persistent storage tied to a single i-d. Autoscaling launch templates, load balancer target groups, ee-see-two instances behind an autoscaling group.
+
+When it does not. Anything with a unique global name you cannot randomize — ess-three buckets, some database identifiers. The old and new cannot coexist because they would both want the same name. The fix is renaming the resource entirely between deploys, or accepting brief downtime.
+
+Prevent destroy.
+
+A safety belt for resources that must not be accidentally destroyed. If any operation — a terraform destroy, or a config change that would force replacement — would destroy this resource, Terraform errors out at plan time with a clear message.
+
+This is the right default for production-critical state. Databases. ess-three buckets holding customer data. k-m-s keys. Anything where "oops" means restoring from backup or recreating from scratch. It costs you nothing. It stops you from one of the worst possible Terraform mistakes.
+
+The caveat. Prevent destroy blocks Terraform-initiated destruction. It does not prevent destruction from outside Terraform — the a-w-s console, the a-w-s command-line tool. That is a separate problem solved with eye-ay-em and deletion protection on the resource itself.
+
+Ignore changes.
+
+Some attributes get modified by something outside Terraform. Autoscaling adjusts a tag. A continuous-integration pipeline updates an am-eye. An external tool adds an annotation. Terraform sees the difference between desired and actual state and tries to "fix" it by reverting the change. You do not want that.
+
+ignore-changes tells Terraform to leave specific attributes alone. The list takes attribute paths. Bare names for top-level attributes like am-eye. Bracket-accessor syntax for collection elements like tags-bracket-LastScanned. The special value bracket-all-bracket ignores every attribute, which is rarely the right answer — at that point the resource is not really managed by Terraform.
+
+The trap. Ignore-changes does not just suppress the plan diff. It tells Terraform to not update that attribute even when the h-c-l value changes. Edit the am-eye in your config, and Terraform will not update the instance. Use ignore-changes only for attributes you genuinely do not want Terraform to control going forward.
+
+Replace triggered by.
+
+Sometimes you want a resource to be replaced when an unrelated value changes, even if no attribute reference forces it. The classic case is redeploying a Lambda when its source-code hash changes, even though the hash is not an argument the Lambda block sees directly.
+
+The pattern is — declare a terraform-data resource whose input is the source-code hash. The terraform-data resource's i-d is derived from its input. Then add the terraform-data resource's i-d to the Lambda's replace-triggered-by list. When the source-code hash changes, the terraform-data i-d changes, which triggers replacement of the Lambda.
+
+Terraform-data is a no-op resource introduced in version one point four. Its only purpose is to carry an input value and produce an i-d that depends on it. It is the right tool for this kind of derivation, replacing older hacks that abused the null-resource triggers attribute.
+
+Count — basic iteration.
+
+Sometimes you want n copies of a resource. The oldest answer in Terraform is count. Setting count equals three on a resource block creates three instances of the resource. Inside the block, count dot index is the zero-based index of the current instance.
+
+Where count works. Identical resources that differ only by index — web zero, web one, web two. Cases where the count itself is the variable — count equals var dot instance count.
+
+Where count breaks. The day you change count from three to two by removing web one from a list of names, Terraform does not know you wanted to remove the middle one. It sees a list of length two and assumes you wanted indices zero and one. So it renames web two to web one, which means destroying and recreating, and it destroys the old web one. This is the classic "shifted index" disaster. You intended to remove one instance. You actually destroyed and recreated two.
+
+The fix is for-each.
+
+For-each — the better iteration.
+
+For-each keys resources by a string or by a set member rather than by integer index. The result is stable across reorderings.
+
+Setting for-each equals two-set of a list of three names creates one resource per name, keyed by the name. Inside the block, each dot key is the map key or set member. Each dot value is the value.
+
+Remove a name from the set and only that resource is destroyed. The other resources are untouched. No shifting. No surprise replacement.
+
+For-each also accepts a map, which is useful when each instance needs different attributes. A subnet for-each over a map of subnet specs, each value containing a cider block and an availability zone, gives you one subnet per entry, each with its own configuration. Add a fourth entry and only that subnet is created. Rename a key and Terraform sees a destroy-and-create, which is correct because keys are identity.
+
+For-each requires the keys to be known at plan time. A for-each over a value that depends on a resource that has not been created yet is an error. The fix is usually to compute the keys from inputs — variables, locals — rather than from other resources.
+
+Count versus for-each — the decision.
+
+A short decision guide. You want n identical resources and n might change — for-each over a set of stable keys. You want a configurable number of resources by index — count, though this is rarely a good fit in practice. Conditional creation — a resource that exists when a flag is true — count equals condition question-mark one colon zero is the idiomatic toggle. One resource per item in a list where order matters — count over the list. One resource per named thing, where reordering should be safe — for-each over a map or set keyed by the name.
+
+The honest default. Prefer for-each unless you have a specific reason. The "I removed an item and it destroyed half my fleet" disaster only happens with count.
+
+The exception is the conditional pattern. count equals var dot enabled question-mark one colon zero is shorter than the for-each equivalent, and you reference the resource as resource-name-bracket-zero which is acceptable for a singleton.
+
+The minus-slash-plus replace, revisited.
+
+Most of this notebook is about preventing the surprise minus-slash-plus in terraform plan. The notebook one cheat sheet bears repeating. Plus create — will be created. Tilde update in-place — attribute changed, resource stays. Minus destroy — will be destroyed. Minus-slash-plus replace — will be destroyed and recreated.
+
+The minus-slash-plus is the dangerous one. Producing it accidentally is how teams end up with five-minute outages, lost data, or replaced load balancers mid-traffic. Three habits prevent most of them.
+
+Read every plan. Especially in production. Continuous-integration gates should refuse to apply a plan with minus-slash-plus on certain resource types without an explicit approval flag.
+
+Know which arguments are force-new before you change them. The provider docs list them. Database engine version. vee-pee-see cider block. Instance type on some platforms. k-m-s key policies. If a deployment plan changes one of these, expect replacement.
+
+Use create-before-destroy on replaceable-but-stateful resources. Launch templates, target groups, instances behind autoscaling. The new one is healthy before the old one dies.
+
+When the plan shows a minus-slash-plus you did not expect, the answer is not to apply it and find out. Investigate. The Terraform community has produced more outage post-mortems for "I should have read the plan more carefully" than for any other reason.
+
+A worked example — a vee-pee-see with three subnets.
+
+Putting it all together. One vee-pee-see, three subnets driven by for-each, an internet gateway, and a route table.
+
+The configuration declares the a-w-s provider, then a locals block defining the three subnet specs as a map keyed by name. Each value carries a cider block and an availability zone.
+
+The vee-pee-see resource is the root of the dependency graph. Everything else references it. prevent-destroy on the life-cycle block means a future terraform destroy errors out before touching it.
+
+The subnet resource uses for-each over the locals subnets map. One subnet per entry, keyed by name. Adding a fourth entry adds one subnet. Removing an entry removes one subnet, without shifting the others.
+
+The route-table-association resource does the same for-each, this time keyed by the subnets themselves. Each dot value dot i-d is each subnet's identifier. The associations parallel the subnets one-to-one.
+
+The dependency graph is — vee-pee-see, then internet gateway, then route table, then associations, with subnets attached to the vee-pee-see in parallel and attached to the route table after both exist. Terraform builds this graph automatically from the references.
+
+The plan reports nine resources to create. One vee-pee-see, one internet gateway, three subnets, one route table, three associations. Apply runs the independents in parallel. Subnets get created concurrently with the route table, then the associations once both are ready.
+
+Add a fourth entry to the subnets map and the plan reports two to add. One subnet, one association. No other resources are touched. That is the for-each promise — the changes you intended are the changes you get.
+
+Forcing replacement.
+
+Occasionally you want to force Terraform to replace a resource even when the config has not changed. The instance has gotten weird. The database has a stuck connection. An ee-see-two instance type needs to be cycled. The modern command is terraform apply dash replace equals the resource address.
+
+This plans a minus-slash-plus replacement of that one resource, regardless of whether its config would otherwise change. It is the safer modern replacement for the older terraform taint command, which mutated state directly and gave no preview.
+
+Dash replace is plan-and-apply. You see what will happen before confirming. Use it for cycling specific instances, not for bulk operations. Terraform taint and untaint still exist but are deprecated. Do not reach for them in new work.
+
+Notebook three turns to state management. What the state file is, why local state hurts in teams, the standard remote backends — ess-three plus DynamoDB, Terraform Cloud. State locking and what split-brain looks like. The drift problem and how to detect it. Sensitive values and how they leak through state. And the state-surgery commands — state move, state remove, import — for when the configuration and the cloud disagree and you have to fix it by hand.
