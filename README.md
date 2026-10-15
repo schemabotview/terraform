@@ -33,4 +33,7 @@ scripts/                   check-content · colab audio notebook · concept.json
 public/audio/<course>/     narration wavs (Colab + Chatterbox only, never by hand)
 ```
 
-See `CLAUDE.md` for the course ids, route contract and authoring invariants.
+All ten courses (74 sections) are authored: scenes, slides and narration text. Narration wavs are
+not generated yet; run `scripts/colab_generate_audio.ipynb` per course.
+
+See `CLAUDE.md` for the course ids, route contract, scene inventory and authoring invariants.

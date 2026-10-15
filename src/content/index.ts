@@ -7,6 +7,7 @@ import { refactor } from './refactor'
 import { testing } from './testing'
 import { security } from './security'
 import { delivery } from './delivery'
+import { recovery } from './recovery'
 import type { Course, Section } from './types'
 
 // Course registry, in syllabus order. Courses are added here as each is authored.
@@ -20,6 +21,7 @@ export const COURSES: Record<string, Course> = {
   [testing.id]: testing,
   [security.id]: security,
   [delivery.id]: delivery,
+  [recovery.id]: recovery,
 }
 
 export type { Course, Section }

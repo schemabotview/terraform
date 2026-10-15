@@ -49,7 +49,7 @@ every recorded route and wav path.
 | `testing` | authored, no wavs yet | `static-checks`, `input-validation`, `conditions-checks`, `test-files`, `mocks`, `evidence-types`, `test-limits` |
 | `security` | authored, no wavs yet | `identities`, `federation`, `sensitive-values`, `artefact-exposure`, `ephemeral`, `supply-chain`, `least-privilege` |
 | `delivery` | authored, no wavs yet | `review-ownership`, `ci-checks`, `reviewed-apply`, `promotion`, `drift-detection`, `policy-checks`, `hcp-terraform`, `audit-provenance` |
-| others | not started | |
+| `recovery` | authored, no wavs yet | `diagnosis`, `interrupted-apply`, `state-recovery`, `upgrades`, `boundaries`, `state-layout`, `course-review` |
 
 Chapter 1 uses one running example: the `main.tf` in `hcl-anatomy` (a `terraform_data.release`
 with an `app_version` variable). Every plan, state excerpt and error on its slides is real Terraform
@@ -73,6 +73,13 @@ Chapter 4's S3 backend ran against a local S3 emulator (moto, in a scratch venv)
 bucket; the emulator endpoint and `skip_*` flags came from a capture-only `-backend-config` file and a
 capture-only `*_override.tf` for `terraform_remote_state`, neither shown on a slide. The lock
 contention and the lost update with `-lock=false` are real concurrent runs.
+
+Chapters 5-10 follow the same rule. Where something could not run here it is labelled on its card:
+the registry module row (ch5), the identity matrix and federation flow (ch8, the OIDC provider block
+does validate), CODEOWNERS, the HCP Terraform cloud block and the module-tag example (ch9), the
+quota row and the boundaries section (ch10). Chapter 10's CLI cross-version check used a
+checksum-verified Terraform 1.17.0-rc2; 1.16.6 read its state without complaint, so the course does
+not claim CLI upgrades are one-way.
 
 Two density lessons from chapter 2: the guard's slide model overestimates chip-heavy bullet slides
 by up to ~15 %, so such a slide can hit `SLIDE_H_MAX` while rendering under 80 % — convert a bullet

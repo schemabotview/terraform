@@ -8,5 +8,6 @@
   "refactor": "Terraform Import, moved and removed Blocks: Adopt and Refactor Safely",
   "testing": "Terraform Testing: validate, Conditions, terraform test and Mocks",
   "security": "Terraform Secrets and Credentials: Sensitive, Ephemeral and OIDC",
-  "delivery": "Terraform in CI/CD: Reviews, Saved Plans, Drift Detection and Policy"
+  "delivery": "Terraform in CI/CD: Reviews, Saved Plans, Drift Detection and Policy",
+  "recovery": "Terraform Failure Recovery: Partial Applies, State Restore and Upgrades"
 }
