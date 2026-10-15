@@ -48,6 +48,7 @@ every recorded route and wav path.
 | `refactor` | authored, no wavs yet | `adoption-inventory`, `import-blocks`, `generated-config`, `post-import`, `moved-blocks`, `removed-blocks`, `state-commands` |
 | `testing` | authored, no wavs yet | `static-checks`, `input-validation`, `conditions-checks`, `test-files`, `mocks`, `evidence-types`, `test-limits` |
 | `security` | authored, no wavs yet | `identities`, `federation`, `sensitive-values`, `artefact-exposure`, `ephemeral`, `supply-chain`, `least-privilege` |
+| `delivery` | authored, no wavs yet | `review-ownership`, `ci-checks`, `reviewed-apply`, `promotion`, `drift-detection`, `policy-checks`, `hcp-terraform`, `audit-provenance` |
 | others | not started | |
 
 Chapter 1 uses one running example: the `main.tf` in `hcl-anatomy` (a `terraform_data.release`
