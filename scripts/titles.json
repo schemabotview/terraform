@@ -3,5 +3,6 @@
   "lifecycle": "Terraform for Beginners: Infrastructure as Code, Plan and Apply",
   "config": "Terraform Variables, Providers and Expressions Explained",
   "planning": "Terraform Plans Explained: Dependencies, count vs for_each, Lifecycle",
-  "state": "Terraform State Explained: Backends, Locking, Drift and Workspaces"
+  "state": "Terraform State Explained: Backends, Locking, Drift and Workspaces",
+  "modules": "Terraform Modules: Inputs, Outputs, Sources and Composition"
 }

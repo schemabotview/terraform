@@ -44,6 +44,7 @@ every recorded route and wav path.
 | `config` | authored, no wavs yet | `root-module`, `version-constraints`, `lock-file`, `provider-config`, `variables`, `locals-outputs`, `expressions`, `for-and-dynamic`, `data-sources` |
 | `planning` | authored, no wavs yet | `dependency-graph`, `hidden-dependency`, `unknown-values`, `count-vs-for-each`, `change-actions`, `lifecycle-rules`, `escape-hatches`, `partial-apply` |
 | `state` | authored, no wavs yet | `state-file`, `drift`, `local-vs-remote`, `backend-migration`, `locking`, `protecting-state`, `state-boundaries`, `workspaces` |
+| `modules` | authored, no wavs yet | `child-module`, `module-interface`, `module-sources`, `module-providers`, `composition`, `module-for-each`, `abstraction` |
 | others | not started | |
 
 Chapter 1 uses one running example: the `main.tf` in `hcl-anatomy` (a `terraform_data.release`
