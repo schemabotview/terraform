@@ -4,5 +4,6 @@
   "config": "Terraform Variables, Providers and Expressions Explained",
   "planning": "Terraform Plans Explained: Dependencies, count vs for_each, Lifecycle",
   "state": "Terraform State Explained: Backends, Locking, Drift and Workspaces",
-  "modules": "Terraform Modules: Inputs, Outputs, Sources and Composition"
+  "modules": "Terraform Modules: Inputs, Outputs, Sources and Composition",
+  "refactor": "Terraform Import, moved and removed Blocks: Adopt and Refactor Safely"
 }
