@@ -41,12 +41,26 @@ every recorded route and wav path.
 | course | status | scenes (`src/scenes/<course>/`) |
 | --- | --- | --- |
 | `lifecycle` | authored, no wavs yet | `three-approaches`, `core-and-providers`, `four-layers`, `hcl-anatomy`, `first-workflow`, `change-and-destroy` |
+| `config` | authored, no wavs yet | `root-module`, `version-constraints`, `lock-file`, `provider-config`, `variables`, `locals-outputs`, `expressions`, `for-and-dynamic`, `data-sources` |
 | others | not started | |
 
 Chapter 1 uses one running example: the `main.tf` in `hcl-anatomy` (a `terraform_data.release`
 with an `app_version` variable). Every plan, state excerpt and error on its slides is real Terraform
 1.16.6 output from that file; anything not executed is labelled `illustrative` in the card title.
 Keep later chapters to the same rule: run it, or label it.
+
+Chapter 2 grows that into a `shop/` root module split across files (versions, providers, variables,
+locals, main, network, data, outputs) with hashicorp/aws 6.69.0, local 2.9.1 and random 3.8.1/3.9.1.
+The registry is unreachable from the authoring container, so providers were installed from a local
+filesystem mirror of verified releases.hashicorp.com zips (hence "unauthenticated" in init output
+and h1:-only lock hashes; the slides never show either line as registry output). AWS plans ran
+offline through a capture-only `*_override.tf` adding the three `skip_*` provider flags and dummy
+env credentials; that file is never shown and is not part of the taught configuration.
+
+Two density lessons from chapter 2: the guard's slide model overestimates chip-heavy bullet slides
+by up to ~15 %, so such a slide can hit `SLIDE_H_MAX` while rendering under 80 % — convert a bullet
+group to a prose paragraph, or shorten bullets to one modelled line (≤ 52 chars). And a long inline
+code chip near a line end breaks across lines on screen; keep chips short or reword around them.
 
 ## Invariants — do not break
 
