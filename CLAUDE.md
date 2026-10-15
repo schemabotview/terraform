@@ -43,6 +43,7 @@ every recorded route and wav path.
 | `lifecycle` | authored, no wavs yet | `three-approaches`, `core-and-providers`, `four-layers`, `hcl-anatomy`, `first-workflow`, `change-and-destroy` |
 | `config` | authored, no wavs yet | `root-module`, `version-constraints`, `lock-file`, `provider-config`, `variables`, `locals-outputs`, `expressions`, `for-and-dynamic`, `data-sources` |
 | `planning` | authored, no wavs yet | `dependency-graph`, `hidden-dependency`, `unknown-values`, `count-vs-for-each`, `change-actions`, `lifecycle-rules`, `escape-hatches`, `partial-apply` |
+| `state` | authored, no wavs yet | `state-file`, `drift`, `local-vs-remote`, `backend-migration`, `locking`, `protecting-state`, `state-boundaries`, `workspaces` |
 | others | not started | |
 
 Chapter 1 uses one running example: the `main.tf` in `hcl-anatomy` (a `terraform_data.release`
@@ -62,6 +63,11 @@ Chapter 3 needs things to actually happen (parallel creates, a failed provisione
 so its examples use `terraform_data` and hashicorp/local + random, which apply locally for real. One
 run there is worth knowing: `create_before_destroy` on a `local_file` with a fixed filename reports
 success, then the deposed object's destroy deletes the new file (shown in `lifecycle-rules`).
+
+Chapter 4's S3 backend ran against a local S3 emulator (moto, in a scratch venv) with a versioned
+bucket; the emulator endpoint and `skip_*` flags came from a capture-only `-backend-config` file and a
+capture-only `*_override.tf` for `terraform_remote_state`, neither shown on a slide. The lock
+contention and the lost update with `-lock=false` are real concurrent runs.
 
 Two density lessons from chapter 2: the guard's slide model overestimates chip-heavy bullet slides
 by up to ~15 %, so such a slide can hit `SLIDE_H_MAX` while rendering under 80 % — convert a bullet
