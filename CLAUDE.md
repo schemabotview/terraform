@@ -46,6 +46,7 @@ every recorded route and wav path.
 | `state` | authored, no wavs yet | `state-file`, `drift`, `local-vs-remote`, `backend-migration`, `locking`, `protecting-state`, `state-boundaries`, `workspaces` |
 | `modules` | authored, no wavs yet | `child-module`, `module-interface`, `module-sources`, `module-providers`, `composition`, `module-for-each`, `abstraction` |
 | `refactor` | authored, no wavs yet | `adoption-inventory`, `import-blocks`, `generated-config`, `post-import`, `moved-blocks`, `removed-blocks`, `state-commands` |
+| `testing` | authored, no wavs yet | `static-checks`, `input-validation`, `conditions-checks`, `test-files`, `mocks`, `evidence-types`, `test-limits` |
 | others | not started | |
 
 Chapter 1 uses one running example: the `main.tf` in `hcl-anatomy` (a `terraform_data.release`

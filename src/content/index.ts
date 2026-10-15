@@ -4,6 +4,7 @@ import { planning } from './planning'
 import { state } from './state'
 import { modules } from './modules'
 import { refactor } from './refactor'
+import { testing } from './testing'
 import type { Course, Section } from './types'
 
 // Course registry, in syllabus order. Courses are added here as each is authored.
@@ -14,6 +15,7 @@ export const COURSES: Record<string, Course> = {
   [state.id]: state,
   [modules.id]: modules,
   [refactor.id]: refactor,
+  [testing.id]: testing,
 }
 
 export type { Course, Section }
