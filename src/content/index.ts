@@ -1,11 +1,13 @@
 import { lifecycle } from './lifecycle'
 import { config } from './config'
+import { planning } from './planning'
 import type { Course, Section } from './types'
 
 // Course registry, in syllabus order. Courses are added here as each is authored.
 export const COURSES: Record<string, Course> = {
   [lifecycle.id]: lifecycle,
   [config.id]: config,
+  [planning.id]: planning,
 }
 
 export type { Course, Section }

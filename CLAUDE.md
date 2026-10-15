@@ -42,6 +42,7 @@ every recorded route and wav path.
 | --- | --- | --- |
 | `lifecycle` | authored, no wavs yet | `three-approaches`, `core-and-providers`, `four-layers`, `hcl-anatomy`, `first-workflow`, `change-and-destroy` |
 | `config` | authored, no wavs yet | `root-module`, `version-constraints`, `lock-file`, `provider-config`, `variables`, `locals-outputs`, `expressions`, `for-and-dynamic`, `data-sources` |
+| `planning` | authored, no wavs yet | `dependency-graph`, `hidden-dependency`, `unknown-values`, `count-vs-for-each`, `change-actions`, `lifecycle-rules`, `escape-hatches`, `partial-apply` |
 | others | not started | |
 
 Chapter 1 uses one running example: the `main.tf` in `hcl-anatomy` (a `terraform_data.release`
@@ -57,10 +58,17 @@ and h1:-only lock hashes; the slides never show either line as registry output).
 offline through a capture-only `*_override.tf` adding the three `skip_*` provider flags and dummy
 env credentials; that file is never shown and is not part of the taught configuration.
 
+Chapter 3 needs things to actually happen (parallel creates, a failed provisioner, a stale saved plan),
+so its examples use `terraform_data` and hashicorp/local + random, which apply locally for real. One
+run there is worth knowing: `create_before_destroy` on a `local_file` with a fixed filename reports
+success, then the deposed object's destroy deletes the new file (shown in `lifecycle-rules`).
+
 Two density lessons from chapter 2: the guard's slide model overestimates chip-heavy bullet slides
 by up to ~15 %, so such a slide can hit `SLIDE_H_MAX` while rendering under 80 % — convert a bullet
 group to a prose paragraph, or shorten bullets to one modelled line (≤ 52 chars). And a long inline
 code chip near a line end breaks across lines on screen; keep chips short or reword around them.
+Chapter 3 adds one: two code cards side by side with long real lines make a wide strip; stack them
+in a `cols: 1` container (a `pattern` band per idea, as in `count-vs-for-each`) instead.
 
 ## Invariants — do not break
 
