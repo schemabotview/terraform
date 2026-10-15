@@ -1,10 +1,9 @@
-import { demo } from './demo'
+import { lifecycle } from './lifecycle'
 import type { Course, Section } from './types'
 
 // Course registry, in syllabus order. Courses are added here as each is authored.
-// SWAP: replace `demo` with this repo's real courses.
 export const COURSES: Record<string, Course> = {
-  [demo.id]: demo,
+  [lifecycle.id]: lifecycle,
 }
 
 export type { Course, Section }

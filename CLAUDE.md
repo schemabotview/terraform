@@ -36,9 +36,17 @@ every recorded route and wav path.
 | 9 | `delivery` | Team Workflows, Delivery, and Governance | 8 |
 | 10 | `recovery` | Failure Recovery and Architecture Evolution | 7 |
 
-Status: scaffold only. The template's `demo` course is still registered so the guards pass; it is
-deleted in the same change that registers `lifecycle`. Add each course's scene inventory here as it
-is authored.
+## Course status and scene inventory
+
+| course | status | scenes (`src/scenes/<course>/`) |
+| --- | --- | --- |
+| `lifecycle` | authored, no wavs yet | `three-approaches`, `core-and-providers`, `four-layers`, `hcl-anatomy`, `first-workflow`, `change-and-destroy` |
+| others | not started | |
+
+Chapter 1 uses one running example: the `main.tf` in `hcl-anatomy` (a `terraform_data.release`
+with an `app_version` variable). Every plan, state excerpt and error on its slides is real Terraform
+1.16.6 output from that file; anything not executed is labelled `illustrative` in the card title.
+Keep later chapters to the same rule: run it, or label it.
 
 ## Invariants — do not break
 
@@ -100,7 +108,14 @@ Levers: **add real content, not padding**; **restack** a board toward the pane's
 scene `padding` to 0.04 for boards that float, **raise** it (0.12–0.17) for tall boards that touch
 the eyebrow.
 
-These are read off the rendered route by eye — `check` models no density at all. The two ratios come
+`npm run density -- <course>` measures the slide and scene ratios against these targets on the
+rendered route (needs `npm run dev` running; set `CHROME` if puppeteer has no browser) and saves a
+screenshot per section to `.tmp/density/`. It reports, it does not fail — and it cannot see overlap,
+so the screenshots still get looked at.
+
+Engine behaviour that matters for density: **edges inside a container force a single chain**, which
+overrides `cols` — four wired bands become one wide strip. To get a grid, drop the inner edges and
+number the bands with `badge` instead (see `core-and-providers`). The two ratios come
 from one repo's ~80 frames of diagram-and-code-card boards, so a deliberately sparse board can sit
 under them. Targets, not thresholds.
 
