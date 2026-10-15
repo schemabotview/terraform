@@ -6,5 +6,6 @@
   "state": "Terraform State Explained: Backends, Locking, Drift and Workspaces",
   "modules": "Terraform Modules: Inputs, Outputs, Sources and Composition",
   "refactor": "Terraform Import, moved and removed Blocks: Adopt and Refactor Safely",
-  "testing": "Terraform Testing: validate, Conditions, terraform test and Mocks"
+  "testing": "Terraform Testing: validate, Conditions, terraform test and Mocks",
+  "security": "Terraform Secrets and Credentials: Sensitive, Ephemeral and OIDC"
 }
