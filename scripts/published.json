@@ -1,0 +1,42 @@
+{
+  "channelId": "UCo9qk2FZeoS79LHYYDln6Tw",
+  "verifiedAt": "2026-10-16",
+  "courses": {
+    "lifecycle": {
+      "videoId": "nRpZJikD8e8",
+      "publishedAt": "2026-10-16",
+      "visibility": "public",
+      "title": "Terraform for Beginners: Infrastructure as Code, Plan and Apply"
+    },
+    "config": {
+      "videoId": "m7qyWFnhZcY",
+      "publishedAt": "2026-10-16",
+      "visibility": "public",
+      "title": "Terraform Variables, Providers and Expressions Explained"
+    },
+    "planning": {
+      "videoId": "PxVJFIU4-Zc",
+      "publishedAt": "2026-10-16",
+      "visibility": "public",
+      "title": "Terraform Plans Explained: Dependencies, count vs for_each, Lifecycle"
+    },
+    "state": {
+      "videoId": "hjIyeR_PW_o",
+      "publishedAt": "2026-10-16",
+      "visibility": "public",
+      "title": "Terraform State Explained: Backends, Locking, Drift and Workspaces"
+    },
+    "modules": {
+      "videoId": "lZ-SZByi314",
+      "publishedAt": "2026-10-16",
+      "visibility": "public",
+      "title": "Terraform Modules: Inputs, Outputs, Sources and Composition"
+    },
+    "refactor": {
+      "videoId": "9tHN5EdpJdw",
+      "publishedAt": "2026-10-16",
+      "visibility": "public",
+      "title": "Terraform Import, moved and removed Blocks: Adopt and Refactor Safely"
+    }
+  }
+}
